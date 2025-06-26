@@ -2,7 +2,7 @@
 name = "capitalcom"
 version = "0.1.2"
 description = "Client for Capital.com REST API (demo and real)"
-authors = [{name = "Wikto Jelenr", email = "wiktor.dev@yelon.ovh"}]
+authors = [{name = "Wikto Jelen", email = "wiktor.dev@yelon.ovh"}]
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "CC BY-NC 4.0"}
