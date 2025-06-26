@@ -1,6 +1,6 @@
 [project]
 name = "capitalcom"
-version = "0.1.1"
+version = "0.1.2"
 description = "Client for Capital.com REST API (demo and real)"
 authors = [{name = "Wikto Jelenr", email = "wiktor.dev@yelon.ovh"}]
 readme = "README.md"
