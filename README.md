@@ -18,7 +18,7 @@ Supports demo and live accounts. Designed for algorithmic trading, market data e
 ##  Installation
 
 ```bash
-pip install capitalcom-client
+pip install capitalcom
 ```
 
 ---
