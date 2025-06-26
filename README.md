@@ -10,9 +10,10 @@ Supports demo and live accounts. Designed for algorithmic trading, market data e
 ## Features
 
 - Open and close market positions
-- Query account/session info
-- Search instruments and market data
-- Supports automatic session renewal
+- Lot-based forex trading with SL/TP (in pips)
+- Automatic session token renewal
+- View and manage demo account balance
+- List and search tradable instruments
 - Colored CLI feedback (green/red/blue)
 
 ---
@@ -33,8 +34,23 @@ from capitalcom_client import CapitalClient
 client = CapitalClient(
     api_key="your_api_key",
     login="your_email",
-    password="your_api_password",
-    demo=True  # set to False for real account
+    password="your_password",
+    demo=True  # Set to False for live account
+)
+
+# List your accounts
+client.list_accounts()
+
+# Check balance
+balance = client.get_balance()
+print("Current balance:", balance)
+
+# Open and close a test trade
+client.test_trade()
+
+# Add demo funds
+client.top_up_demo(5000)
+
 )
 
 # Open and close a test trade
@@ -43,15 +59,23 @@ client.test_trade()
 
 ---
 
-## Methods overview
+## Available Methods
 
 | Method | Description |
 |--------|-------------|
-| `open_forex_position(...)` | Open a market order on forex with SL/TP in pips |
-| `get_open_positions()`     | Get all active positions |
-| `close_position_by_id(deal_id)` | Close a position by its deal ID |
-| `search_instrument(term)` | Search instruments by name |
-| `list_all_instruments()`  | Recursively list all tradable markets |
+| `open_forex_position(epic, size, direction, stop_dist=None, profit_dist=None)` | Open forex trade (lot-based) |
+| `open_raw_position(epic, size, direction, ...)` | Open position with raw size |
+| `close_position_by_id(deal_id, size=None)` | Close full or partial position |
+| `get_open_positions()` | List all open positions |
+| `search_instrument(term)` | Search instruments via market navigation |
+| `search_markets(term)` | Search instruments via `/markets` endpoint |
+| `list_all_instruments()` | Recursively list all tradable instruments |
+| `get_session_info()` | View session, `accountId`, `clientId` |
+| `get_balance(account_id=None, raw=False)` | Fetch current account balance |
+| `list_accounts()` | List all your accounts and IDs |
+| `top_up_demo(amount)` | Add funds to demo account (up to 100K) |
+| `test_trade()` | Execute a small test trade (0.001 lot EUR/USD) |
+
 
 ---
 
