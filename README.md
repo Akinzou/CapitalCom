@@ -1,4 +1,5 @@
-# CapitalCom 
+# CapitalCom  ![PyPI](https://img.shields.io/pypi/v/capitalcom-client) ![Python](https://img.shields.io/badge/python-3.8%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-CC_BY--NC_4.0-lightgrey.svg)
+
 
 A lightweight Python wrapper for the Capital.com REST API.
 Supports demo and live accounts. Designed for algorithmic trading, market data exploration, and automated execution.
