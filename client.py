@@ -14,7 +14,7 @@ class CapitalClient:
         self.login_session()  # Automatically authenticate upon creation
 
     def login_session(self):
-        """Authenticate and store session tokens (CST + X-SECURITY-TOKEN)."""
+        """Authenticate and store session tokens (CST and X-SECURITY-TOKEN)."""
         url = f'{self.base_url}/api/v1/session'
         headers = {
             'Content-Type': 'application/json',
@@ -36,7 +36,7 @@ class CapitalClient:
             raise Exception(f"Login failed: {response.status_code} {response.text}")
 
     def _headers(self):
-        """Return required headers for authenticated API requests."""
+        """Return the required headers for authenticated API requests."""
         return {
             'CST': self.cst,
             'X-SECURITY-TOKEN': self.security_token
@@ -105,7 +105,7 @@ class CapitalClient:
         return recurse()
 
     def search_markets(self, term):
-        """Search markets directly (by name or epic) using the /markets endpoint."""
+        """Search for markets directly (by name or epic) using the /markets endpoint."""
         resp = self._request('GET', '/api/v1/markets', params={'searchTerm': term})
         if resp.status_code == 200:
             return resp.json().get("markets", [])
@@ -136,7 +136,7 @@ class CapitalClient:
         if resp.status_code != 200:
             raise Exception(f"Error opening position: {resp.status_code} {resp.text}")
 
-        # Poll open positions until we see the new one appear
+        # Poll open positions until the new one appears
         timeout = 10
         start = time.time()
         while time.time() - start < timeout:
@@ -162,7 +162,7 @@ class CapitalClient:
         )
 
     def pips_to_profit_distance(self, pips, pip_position):
-        """Convert pips into profitDistance format based on pip position (e.g. 5 digits)."""
+        """Convert pips into profitDistance format based on pip position (e.g., 5-digit pricing)."""
         return pips * 10 ** (-pip_position) if pips else None
 
     def get_open_positions(self):
@@ -186,17 +186,17 @@ class CapitalClient:
             raise Exception(f"Error closing position: {resp.status_code} {resp.text}")
 
     def lot_to_size(self, lot, lot_size):
-        """Convert a lot amount (e.g. 0.01) into raw size units (e.g. 1000)."""
+        """Convert a lot amount (e.g., 0.01) into raw size units (e.g., 1000)."""
         return lot * lot_size
 
     def _print_green(self, text):
-        print(f"\033[92m{text}\033[0m")  # bright green
+        print(f"\033[92m{text}\033[0m")
 
     def _print_red(self, text):
-        print(f"\033[91m{text}\033[0m")  # bright red
+        print(f"\033[91m{text}\033[0m")
 
     def _print_blue(self, text):
-        print(f"\033[94m{text}\033[0m")  # bright blue
+        print(f"\033[94m{text}\033[0m")
 
     def test_trade(self):
         """
@@ -230,3 +230,82 @@ class CapitalClient:
             self._print_green(f"Position closed: {result}")
         except Exception as e:
             self._print_red(f"Failed to close position: {e}")
+
+    def get_balance(self, account_id=None, raw=False):
+        """
+        Return the current account balance and available funds.
+
+        Parameters:
+            raw (bool): If True, returns the full balance structure.
+            account_id (str): Optional. If provided, selects balance for this account.
+        """
+        resp = self._request("GET", "/api/v1/accounts")
+        if resp.status_code != 200:
+            raise Exception(f"GET /accounts failed: {resp.status_code} {resp.text}")
+
+        accounts = resp.json().get("accounts", [])
+        if not accounts:
+            raise Exception("No accounts found.")
+
+        account = None
+        if account_id:
+            for acc in accounts:
+                if acc.get("accountId") == account_id:
+                    account = acc
+                    break
+            if account is None:
+                raise Exception(f"Account with ID '{account_id}' not found.")
+        else:
+            account = accounts[0]
+
+        balance = account.get("balance")
+        available = account.get("available")
+
+        if raw:
+            return {
+                "balance": balance,
+                "available": available,
+                "currency": account.get("currency")
+            }
+        else:
+            return balance['balance']
+
+    def list_accounts(self):
+        """
+        List all available accounts with their ID, currency, and balance.
+        """
+        resp = self._request("GET", "/api/v1/accounts")
+        if resp.status_code != 200:
+            raise Exception(f"GET /accounts failed: {resp.status_code} {resp.text}")
+
+        accounts = resp.json().get("accounts", [])
+        if not accounts:
+            self._print_red("No accounts found.")
+            return []
+
+        for acc in accounts:
+            acc_id = acc.get("accountId", "N/A")
+            currency = acc.get("currency", "N/A")
+            balance = acc.get("balance", {}).get("balance", "N/A")
+            self._print_blue(f"Account ID: {acc_id}, Currency: {currency}, Balance: {balance}")
+
+        return accounts
+
+    def top_up_demo(self, amount):
+        """
+        Add funds to the demo account.
+
+        Limits:
+            • Max 10 requests/sec
+            • Max 100 requests/account/day
+            • Maximum balance after top-up: 100,000 units
+        """
+        payload = {"amount": amount}
+        resp = self._request("POST", "/api/v1/accounts/topUp", json=payload)
+        if resp.status_code == 200:
+            self._print_green("Demo account topped up successfully.")
+        else:
+            raise Exception(f"Error topping up demo account: {resp.status_code} {resp.text}")
+
+
+
