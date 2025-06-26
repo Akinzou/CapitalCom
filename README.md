@@ -1,4 +1,5 @@
-# CapitalCom  ![PyPI](https://img.shields.io/pypi/v/capitalcom) ![Python](https://img.shields.io/badge/python-3.8%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-CC_BY--NC_4.0-lightgrey.svg)
+# CapitalCom  ![PyPI](https://img.shields.io/pypi/v/capitalcom) ![Python](https://img.shields.io/badge/python-3.8%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-CC_BY--NC_4.0-lightgrey.svg) [![PyPI Publish](https://github.com/Akinzou/CapitalCom/actions/workflows/python-publish.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/python-publish.yml)
+
 
 
 A lightweight Python wrapper for the Capital.com REST API.
