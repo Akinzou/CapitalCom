@@ -32,7 +32,7 @@ from capitalcom_client import CapitalClient
 client = CapitalClient(
     api_key="your_api_key",
     login="your_email",
-    password="your_password",
+    password="your_api_password",
     demo=True  # set to False for real account
 )
 
