@@ -16,10 +16,9 @@ dependencies = [
     "requests>=2.25"
 ]
 
-urls = { 
-  homepage = "https://github.com/Akinzou/CapitalCom",
-  discord = "https://discord.gg/BARYa55KS8"
-}
+[project.urls]
+homepage = "https://github.com/Akinzou/CapitalCom"
+discord = "https://discord.gg/BARYa55KS8"
 
 [build-system]
 requires = ["setuptools>=61.0"]
