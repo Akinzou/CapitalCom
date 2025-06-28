@@ -1,5 +1,6 @@
 # CapitalCom  [![PyPI Publish](https://github.com/Akinzou/CapitalCom/actions/workflows/python-publish.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/python-publish.yml) ![PyPI](https://img.shields.io/pypi/v/capitalcom) ![Python](https://img.shields.io/badge/python-3.8%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-CC_BY--NC_4.0-lightgrey.svg) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
-[![DSC](https://img.shields.io/discord/1388236230361092288.svg?label=Discord&logo=discord&style=for-the-badge)](https://discord.gg/BARYa55KS8)
+[![Discord](https://img.shields.io/badge/Join_us_on-Discord-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/BARYa55KS8)
+
 
 
 
