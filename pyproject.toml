@@ -1,6 +1,6 @@
 [project]
 name = "capitalcom"
-version = "1.0.0"
+version = "1.0.1"
 description = "Client for Capital.com REST API (demo and real)"
 authors = [{name = "Wikto Jelen", email = "wiktor.dev@yelon.ovh"}]
 readme = "README.md"
@@ -16,7 +16,15 @@ dependencies = [
     "requests>=2.25"
 ]
 
+urls = { 
+  "Homepage" = "https://github.com/Akinzou/CapitalCom",
+  "Discord" = "https://discord.gg/BARYa55KS8"
+}
 
 [build-system]
 requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+
