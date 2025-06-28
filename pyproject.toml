@@ -17,8 +17,8 @@ dependencies = [
 ]
 
 urls = { 
-  "Homepage" = "https://github.com/Akinzou/CapitalCom",
-  "Discord" = "https://discord.gg/BARYa55KS8"
+  homepage = "https://github.com/Akinzou/CapitalCom",
+  discord = "https://discord.gg/BARYa55KS8"
 }
 
 [build-system]
@@ -27,4 +27,3 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-
