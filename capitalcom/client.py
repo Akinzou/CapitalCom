@@ -1,5 +1,27 @@
 import requests
 import time
+import logging
+
+# ANSI color codes for terminal coloring
+RESET = "\033[0m"
+GREEN = "\033[92m"
+RED = "\033[91m"
+BLUE = "\033[94m"
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
+def colored_log(level, text):
+    color = {
+        'INFO': GREEN,
+        'ERROR': RED,
+        'DEBUG': BLUE,
+        'WARNING': RED
+    }.get(level, '')
+    logging.log(getattr(logging, level), f"{color}{text}{RESET}")
 
 class CapitalClient:
     def __init__(self, api_key, login, password, demo=True):
@@ -30,9 +52,9 @@ class CapitalClient:
             self.cst = response.headers['CST']
             self.security_token = response.headers['X-SECURITY-TOKEN']
             self.token_expiry = time.time() + 600  # Capital.com sessions expire after 10 minutes of inactivity
-            self._print_green("Session opened successfully.")
+            colored_log("INFO", "Session opened successfully.")
         else:
-            self._print_red(f"Login failed: {response.status_code} {response.text}")
+            colored_log("ERROR", f"Login failed: {response.status_code} {response.text}")
             raise Exception(f"Login failed: {response.status_code} {response.text}")
 
     def _headers(self):
@@ -48,7 +70,7 @@ class CapitalClient:
         Automatically re-authenticates if the token has expired or if a 401 response is received.
         """
         if time.time() > self.token_expiry:
-            self._print_blue("Session expired. Renewing...")
+            colored_log("DEBUG", "Session expired. Renewing...")
             self.login_session()
 
         url = f"{self.base_url}{path}"
@@ -58,7 +80,7 @@ class CapitalClient:
         response = self.session.request(method, url, headers=headers, **kwargs)
 
         if response.status_code == 401:
-            self._print_blue("Token invalid. Retrying request after re-authentication...")
+            colored_log("DEBUG", "Token invalid. Retrying request after re-authentication...")
             self.login_session()
             headers = self._headers()
             response = self.session.request(method, url, headers=headers, **kwargs)
@@ -91,7 +113,7 @@ class CapitalClient:
             path = f"/api/v1/marketnavigation/{node_id}" if node_id else "/api/v1/marketnavigation"
             resp = self._request('GET', path)
             if resp.status_code != 200:
-                self._print_red(f"Error while fetching {path}")
+                colored_log("ERROR", f"Error while fetching {path}")
                 return instruments
 
             data = resp.json()
@@ -144,6 +166,7 @@ class CapitalClient:
             filtered = [p for p in positions if p['market']['epic'] == epic]
             if filtered:
                 latest = sorted(filtered, key=lambda p: p['position']['createdDate'], reverse=True)[0]
+                colored_log("INFO", f"Position opened. Deal ID: {latest['position']['dealId']}")
                 return latest['position']['dealId']
             time.sleep(0.5)
 
@@ -161,10 +184,6 @@ class CapitalClient:
             self.pips_to_profit_distance(profit_dist, 5)
         )
 
-    def pips_to_profit_distance(self, pips, pip_position):
-        """Convert pips into profitDistance format based on pip position (e.g., 5-digit pricing)."""
-        return pips * 10 ** (-pip_position) if pips else None
-
     def get_open_positions(self):
         """Return all currently open positions on the account."""
         resp = self._request('GET', '/api/v1/positions')
@@ -181,6 +200,7 @@ class CapitalClient:
 
         resp = self._request("DELETE", "/api/v1/positions", json=payload)
         if resp.status_code == 200:
+            colored_log("INFO", f"Position closed successfully: {deal_id}")
             return "SUCCESS"
         else:
             raise Exception(f"Error closing position: {resp.status_code} {resp.text}")
@@ -189,47 +209,9 @@ class CapitalClient:
         """Convert a lot amount (e.g., 0.01) into raw size units (e.g., 1000)."""
         return lot * lot_size
 
-    def _print_green(self, text):
-        print(f"\033[92m{text}\033[0m")
-
-    def _print_red(self, text):
-        print(f"\033[91m{text}\033[0m")
-
-    def _print_blue(self, text):
-        print(f"\033[94m{text}\033[0m")
-
-    def test_trade(self):
-        """
-        Open and close a small test trade to verify functionality.
-        Uses fixed epic (EURUSD) and 0.001 lot.
-        """
-        epic = "EURUSD"
-        lot = 0.001
-        direction = "BUY"
-
-        self._print_blue("Opening test position on EUR/USD (0.001 lot)...")
-        try:
-            deal_id = self.open_forex_position(
-                epic=epic,
-                size=lot,
-                direction=direction,
-                stop_dist=100,
-                profit_dist=200
-            )
-            self._print_green(f"Position opened. Deal ID: {deal_id}")
-        except Exception as e:
-            self._print_red(f"Failed to open position: {e}")
-            return
-
-        self._print_blue("Waiting 5 seconds before closing...")
-        time.sleep(5)
-
-        self._print_blue("Closing position...")
-        try:
-            result = self.close_position_by_id(deal_id)
-            self._print_green(f"Position closed: {result}")
-        except Exception as e:
-            self._print_red(f"Failed to close position: {e}")
+    def pips_to_profit_distance(self, pips, pip_position):
+        """Convert pips into profitDistance format based on pip position (e.g., 5-digit pricing)."""
+        return pips * 10 ** (-pip_position) if pips else None
 
     def get_balance(self, account_id=None, raw=False):
         """
@@ -247,24 +229,13 @@ class CapitalClient:
         if not accounts:
             raise Exception("No accounts found.")
 
-        account = None
-        if account_id:
-            for acc in accounts:
-                if acc.get("accountId") == account_id:
-                    account = acc
-                    break
-            if account is None:
-                raise Exception(f"Account with ID '{account_id}' not found.")
-        else:
-            account = accounts[0]
+        account = next((acc for acc in accounts if acc.get("accountId") == account_id), accounts[0])
 
         balance = account.get("balance")
-        available = account.get("available")
-
         if raw:
             return {
                 "balance": balance,
-                "available": available,
+                "available": account.get("available"),
                 "currency": account.get("currency")
             }
         else:
@@ -280,14 +251,14 @@ class CapitalClient:
 
         accounts = resp.json().get("accounts", [])
         if not accounts:
-            self._print_red("No accounts found.")
+            colored_log("ERROR", "No accounts found.")
             return []
 
         for acc in accounts:
             acc_id = acc.get("accountId", "N/A")
             currency = acc.get("currency", "N/A")
             balance = acc.get("balance", {}).get("balance", "N/A")
-            self._print_blue(f"Account ID: {acc_id}, Currency: {currency}, Balance: {balance}")
+            colored_log("INFO", f"Account ID: {acc_id}, Currency: {currency}, Balance: {balance}")
 
         return accounts
 
@@ -303,9 +274,39 @@ class CapitalClient:
         payload = {"amount": amount}
         resp = self._request("POST", "/api/v1/accounts/topUp", json=payload)
         if resp.status_code == 200:
-            self._print_green("Demo account topped up successfully.")
+            colored_log("INFO", "Demo account topped up successfully.")
         else:
             raise Exception(f"Error topping up demo account: {resp.status_code} {resp.text}")
 
+    def test_trade(self):
+        """
+        Open and close a small test trade to verify functionality.
+        Uses fixed epic (EURUSD) and 0.001 lot.
+        """
+        epic = "EURUSD"
+        lot = 0.001
+        direction = "BUY"
 
+        colored_log("INFO", "Opening test position on EUR/USD (0.001 lot)...")
+        try:
+            deal_id = self.open_forex_position(
+                epic=epic,
+                size=lot,
+                direction=direction,
+                stop_dist=100,
+                profit_dist=200
+            )
+            colored_log("INFO", f"Position opened. Deal ID: {deal_id}")
+        except Exception as e:
+            colored_log("ERROR", f"Failed to open position: {e}")
+            return
 
+        colored_log("DEBUG", "Waiting 5 seconds before closing...")
+        time.sleep(5)
+
+        colored_log("DEBUG", "Closing position...")
+        try:
+            result = self.close_position_by_id(deal_id)
+            colored_log("INFO", f"Position closed: {result}")
+        except Exception as e:
+            colored_log("ERROR", f"Failed to close position: {e}")
