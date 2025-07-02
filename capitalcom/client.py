@@ -136,8 +136,8 @@ class CapitalClient:
 
     def open_raw_position(self, epic, size, direction, stop_dist=None, profit_dist=None):
         """
-        Open a raw market position and return the resolved dealId (not just dealReference).
-        Uses polling because Capital.com does not return dealId directly.
+        Open a raw market position and return the resolved dealId using dealReference confirm.
+        This avoids polling and eliminates ambiguity when multiple positions are open on the same epic.
         """
         payload = {
             "epic": epic,
@@ -154,23 +154,34 @@ class CapitalClient:
         if profit_dist:
             payload["profitDistance"] = profit_dist
 
+        # Send position request
         resp = self._request("POST", "/api/v1/positions", json=payload)
         if resp.status_code != 200:
             raise Exception(f"Error opening position: {resp.status_code} {resp.text}")
 
-        # Poll open positions until the new one appears
-        timeout = 10
-        start = time.time()
-        while time.time() - start < timeout:
-            positions = self.get_open_positions()
-            filtered = [p for p in positions if p['market']['epic'] == epic]
-            if filtered:
-                latest = sorted(filtered, key=lambda p: p['position']['createdDate'], reverse=True)[0]
-                colored_log("INFO", f"Position opened. Deal ID: {latest['position']['dealId']}")
-                return latest['position']['dealId']
-            time.sleep(0.5)
+        # Extract dealReference
+        deal_ref = resp.json().get("dealReference")
+        if not deal_ref:
+            raise Exception("Missing dealReference in response")
 
-        raise Exception(f"Position not found for epic: {epic} within {timeout}s")
+        # Confirm using dealReference
+        time.sleep(0.1)  # short delay helps avoid rare timing issues
+        confirm = self._request("GET", f"/api/v1/confirms/{deal_ref}")
+        if confirm.status_code != 200:
+            raise Exception(f"Error confirming deal: {confirm.status_code} {confirm.text}")
+
+        # Extract dealId
+        confirm_data = confirm.json()
+        affected_deals = confirm_data.get("affectedDeals", [])
+        if not affected_deals:
+            raise Exception(f"No affectedDeals in confirm response: {confirm_data}")
+
+        deal_id = affected_deals[0].get("dealId")
+        if not deal_id:
+            raise Exception(f"dealId missing in affectedDeals: {confirm_data}")
+
+        colored_log("INFO", f"Position opened. Deal ID: {deal_id}")
+        return deal_id
 
     def open_forex_position(self, epic, size, direction, stop_dist=None, profit_dist=None):
         """
