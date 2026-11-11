@@ -4,6 +4,7 @@ from types import TracebackType
 
 import requests
 
+from capitalcom.api.accounts import AccountsResource
 from capitalcom.api.composition import Core, build_core
 from capitalcom.api.session_resource import SessionResource
 from capitalcom.application.logs import get_logger
@@ -51,6 +52,7 @@ class CapitalCom:
         )
         self._closed = False
         self.session = SessionResource(self._core)
+        self.accounts = AccountsResource(self._core)
 
     def __repr__(self) -> str:
         # The identifier is the account's e-mail address, so only the environment is shown.

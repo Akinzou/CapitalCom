@@ -92,7 +92,8 @@ def require_bool(payload: Mapping[str, Any], key: str) -> bool:
     return value
 
 
-def _integral(value: object, field: str) -> int:
+def to_int(value: object, field: str) -> int:
+    """Convert a JSON integer, or a ``Decimal`` with an integral value, to ``int``."""
     # bool is an int subclass and a Decimal may carry a fraction; both would be silently
     # truncated or misread by int(), so they are rejected instead.
     if isinstance(value, bool) or not isinstance(value, int | Decimal):
@@ -104,7 +105,7 @@ def _integral(value: object, field: str) -> int:
 
 def require_int(payload: Mapping[str, Any], key: str) -> int:
     """Read a required integer field."""
-    return _integral(_missing(payload, key), key)
+    return to_int(_missing(payload, key), key)
 
 
 def require_list(payload: Mapping[str, Any], key: str) -> list[Any]:
@@ -143,7 +144,7 @@ def epoch_ms_to_utc(value: object, field: str) -> datetime:
     Adding a ``timedelta`` keeps the millisecond exact; ``fromtimestamp(ms / 1000)`` goes
     through a float and can land a microsecond off.
     """
-    return _EPOCH + timedelta(milliseconds=_integral(value, field))
+    return _EPOCH + timedelta(milliseconds=to_int(value, field))
 
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
