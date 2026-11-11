@@ -199,13 +199,11 @@ Deliberate behaviour changes, each listed in the CHANGELOG:
    call could hang forever.
 
 Legacy behaviour that is kept on purpose (designer's call):
-- **Partial close (`size` given).** The documented endpoint has no size parameter. The legacy
-  layer keeps sending 1.0.4's `DELETE /api/v1/positions` with `{dealId, size}` and confirms the
-  result.
-  - A stage-1 contract test on demo proves whether that endpoint really closes only part of the
-    position.
-  - If it does not, the call raises `ValidationError`. It never silently closes the whole
-    position.
+- **Partial close (`size` given).** The documented endpoint has no size parameter. The stage-1
+  contract test showed that 1.0.4's `DELETE /api/v1/positions` with `{dealId, size}` closes
+  the whole position (ADR 0007).
+  - So a non-zero `size` raises `ValidationError` before anything is sent. It never silently
+    closes the whole position.
   - The 2.0 API exposes `positions.close(deal_id)` (full close only) until a documented
     partial-close mechanism is verified.
 - **No local pre-trade validation on the legacy path.** It would add a `GET /markets/{epic}`
