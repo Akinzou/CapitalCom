@@ -131,6 +131,13 @@ def test_public_exports() -> None:
         "OutcomeUnknownError",
         "DealRejectedError",
         "ConfirmationTimeoutError",
+        "SessionInfo",
+        "Account",
+        "Balance",
+        "AccountPreferences",
+        "Leverage",
+        "Activity",
+        "Transaction",
     }
     assert expected <= set(dir(capitalcom))
 

@@ -9,6 +9,7 @@
 from .api.client import CapitalCom
 from .application.retry import RetryPolicy
 from .client import *
+from .domain.account import Account, AccountPreferences, Balance, Leverage, SessionInfo
 from .domain.confirmation import DealConfirmation
 from .domain.enums import Direction, Environment
 from .domain.errors import (
@@ -24,3 +25,4 @@ from .domain.errors import (
     TransportError,
     ValidationError,
 )
+from .domain.history import Activity, Transaction
