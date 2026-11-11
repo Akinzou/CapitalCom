@@ -1,6 +1,7 @@
 """In-memory test doubles for the application ports. They never touch the network or sleep."""
 
 import threading
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from capitalcom.application.ports import HttpRequest, HttpResponse
@@ -48,7 +49,7 @@ class FakeTransport:
     When the script runs out, the last entry repeats, so "always 404" needs one entry.
     """
 
-    def __init__(self, script: list[HttpResponse | TransportError]) -> None:
+    def __init__(self, script: Sequence[HttpResponse | TransportError]) -> None:
         self._script = list(script)
         self._lock = threading.Lock()
         self.requests: list[HttpRequest] = []
