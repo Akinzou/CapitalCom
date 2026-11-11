@@ -8,6 +8,7 @@ from enum import Enum
 from typing import Any
 
 from capitalcom.domain.enums import Direction
+from capitalcom.domain.errors import CapitalComError
 from capitalcom.domain.parsing import format_error, optional_decimal, optional_str, optional_utc
 
 
@@ -59,8 +60,8 @@ class DealConfirmation:
             direction=_direction(payload.get("direction")),
             level=optional_decimal(payload, "level"),
             size=optional_decimal(payload, "size"),
-            # The rejection shape is undocumented; both keys have been seen in IG-style APIs.
-            # The stage 1b contract test pins which one Capital.com uses.
+            # The demo server sends rejectReason (RC_NOT_ENOUGH_MARGIN, ADR 0007); reason is
+            # still read first in case another environment uses the IG-style key.
             reason=optional_str(payload, "reason") or optional_str(payload, "rejectReason"),
             affected_deals=_affected_deals(payload.get("affectedDeals")),
             date=optional_utc(payload, "date"),
@@ -88,6 +89,54 @@ class DealConfirmation:
     def is_accepted(self) -> bool:
         """True when the deal was booked."""
         return self.outcome is Outcome.ACCEPTED
+
+    @property
+    def position_id(self) -> str | None:
+        """Id of the position or working order this deal opened, or ``None``.
+
+        It is the first affected deal with status ``OPENED``; the top-level ``deal_id`` of an
+        opened position is not the position (ADR 0007). ``None`` when nothing opened, for
+        example when an opposite deal closed a position instead (netting).
+        """
+        for deal in self.affected_deals:
+            if deal.status == "OPENED":
+                return deal.deal_id
+        return None
+
+    def require_size(self, requested: Decimal) -> "DealConfirmation":
+        """Return this confirmation if it booked ``requested``; otherwise raise.
+
+        The server rounds a size that is off its increment grid without saying so, so a
+        deal for 0.00015 can come back as 0.00010. The deal exists either way, which is why
+        the error carries this confirmation.
+        """
+        if self.size != requested:
+            raise SizeAdjustedError(requested, self)
+        return self
+
+
+class SizeAdjustedError(CapitalComError):
+    """The server booked a different size than requested; the deal is open regardless."""
+
+    def __init__(self, requested: Decimal, confirmation: DealConfirmation) -> None:
+        super().__init__(
+            f"Deal {confirmation.deal_reference}: booked size {confirmation.size} instead of "
+            f"{requested}. The deal is open; see .confirmation.position_id.",
+            requested,
+            confirmation,
+        )
+        self._requested = requested
+        self._confirmation = confirmation
+
+    @property
+    def requested(self) -> Decimal:
+        """Size the caller asked for."""
+        return self._requested
+
+    @property
+    def confirmation(self) -> DealConfirmation:
+        """Confirmation of the deal as booked."""
+        return self._confirmation
 
 
 def _direction(value: object) -> Direction | None:

@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any
 
 from capitalcom.domain.errors import ValidationError
+from capitalcom.domain.order_request import OrderRequest
 from capitalcom.domain.parsing import (
     as_mapping,
     format_error,
@@ -96,6 +97,31 @@ class DealingRules:
             trailing_stops_preference=require_str(payload, "trailingStopsPreference"),
             raw=payload,
         )
+
+    def validate(self, order: OrderRequest) -> None:
+        """Raise ``ValidationError`` when ``order.size`` breaks the size rules.
+
+        Only sizes are checked, all in ``POINTS`` on every demo market. Stop and profit
+        distances are left to the server: their limits are percentages it applies to the
+        resulting level against the live quote (ADR 0010).
+        """
+        low = _points(self.min_deal_size, "minDealSize")
+        high = _points(self.max_deal_size, "maxDealSize")
+        step = _points(self.min_size_increment, "minSizeIncrement")
+        if order.size < low:
+            raise ValidationError(f"size {order.size} is below the minimum {low}")
+        if order.size > high:
+            raise ValidationError(f"size {order.size} is above the maximum {high}")
+        # Measured from zero: every demo market's minimum lies on its increment grid, and the
+        # server rounds an off-grid size down without saying so.
+        if step and order.size % step:
+            raise ValidationError(f"size {order.size} is not a multiple of the increment {step}")
+
+
+def _points(rule: RuleValue, name: str) -> Decimal:
+    if rule.unit != "POINTS":
+        raise ValidationError(f"cannot check size: {name} is in {rule.unit}")
+    return rule.value
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,3 +230,16 @@ class MarketDetails:
             snapshot=MarketSnapshot.from_api(require_mapping(body, "snapshot")),
             raw=body,
         )
+
+    def validate(self, order: OrderRequest) -> None:
+        """Check ``order`` against this market before it is sent.
+
+        Raises ``ValidationError`` for an order on another market or a size outside the
+        dealing rules. Stop and profit distances are not checked; the server stays
+        authoritative for them (see ``DealingRules.validate``).
+        """
+        if order.epic != self.instrument.epic:
+            raise ValidationError(
+                f"order is for {order.epic}, but these details are for {self.instrument.epic}"
+            )
+        self.dealing_rules.validate(order)

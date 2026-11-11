@@ -6,6 +6,7 @@ import pytest
 
 from capitalcom.domain.errors import ResponseFormatError, ValidationError
 from capitalcom.domain.market_details import MarketDetails, PipScale, RuleValue
+from capitalcom.domain.order_request import OrderRequest
 from tests.unit.market_payloads import details
 
 
@@ -87,3 +88,39 @@ def test_lots_become_a_size() -> None:
     assert instrument.lots_to_size(Decimal("2.5")) == Decimal("2.5")
     with pytest.raises(ValidationError, match="lots"):
         instrument.lots_to_size(True)
+
+
+def btc_details(**rules: dict[str, object]) -> MarketDetails:
+    payload = details("BTCUSD")
+    payload["dealingRules"] |= {
+        "minDealSize": {"unit": "POINTS", "value": Decimal("0.0001")},
+        "maxDealSize": {"unit": "POINTS", "value": Decimal(50)},
+        "minSizeIncrement": {"unit": "POINTS", "value": Decimal("0.0001")},
+    } | rules
+    return MarketDetails.from_api(payload)
+
+
+def btc_order(size: str) -> OrderRequest:
+    return OrderRequest("BTCUSD", "BUY", Decimal(size))
+
+
+@pytest.mark.parametrize("size", ["0.00005", "51", "0.00015"])
+def test_validate_refuses_sizes_outside_the_dealing_rules(size: str) -> None:
+    with pytest.raises(ValidationError, match="size"):
+        btc_details().validate(btc_order(size))
+
+
+def test_validate_passes_a_size_on_the_increment_grid() -> None:
+    btc_details().validate(btc_order("0.0002"))  # does not raise
+    btc_details().dealing_rules.validate(btc_order("50"))  # does not raise
+
+
+def test_validate_refuses_to_guess_a_rule_in_another_unit() -> None:
+    rules = {"minDealSize": {"unit": "PERCENTAGE", "value": Decimal("0.0001")}}
+    with pytest.raises(ValidationError, match="cannot check size: minDealSize is in PERCENTAGE"):
+        btc_details(**rules).validate(btc_order("0.0002"))
+
+
+def test_validate_refuses_an_order_for_another_market() -> None:
+    with pytest.raises(ValidationError, match="EURUSD"):
+        MarketDetails.from_api(details()).validate(OrderRequest("EURUSD", "BUY", 1))

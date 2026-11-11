@@ -1,10 +1,16 @@
+import pickle
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 import pytest
 
-from capitalcom.domain.confirmation import AffectedDeal, DealConfirmation, Outcome
+from capitalcom.domain.confirmation import (
+    AffectedDeal,
+    DealConfirmation,
+    Outcome,
+    SizeAdjustedError,
+)
 from capitalcom.domain.enums import Direction
 from capitalcom.domain.errors import ResponseFormatError
 from capitalcom.domain.parsing import to_decimal, to_utc
@@ -132,3 +138,57 @@ def test_bad_direction_raises(direction: object) -> None:
     payload["direction"] = direction
     with pytest.raises(ResponseFormatError, match="direction"):
         DealConfirmation.from_api(payload)
+
+
+def observed(status: str, affected: list[tuple[str, str]], **extra: Any) -> DealConfirmation:
+    """A confirmation shaped like the ones seen on demo (ADR 0010)."""
+    payload: dict[str, Any] = {
+        "dealReference": "o_1",
+        "dealId": "D1",
+        "dealStatus": "ACCEPTED",
+        "status": status,
+        "size": Decimal("0.00010"),
+        "affectedDeals": [{"dealId": deal, "status": state} for deal, state in affected],
+    }
+    return DealConfirmation.from_api(payload | extra)
+
+
+def test_position_id_is_the_deal_that_opened() -> None:
+    opened = observed("OPEN", [("P1", "OPENED")])
+    assert (opened.position_id, opened.deal_id) == ("P1", "D1")
+
+
+def test_position_id_is_none_when_nothing_opened() -> None:
+    assert observed("CLOSED", [("P0", "FULLY_CLOSED")]).position_id is None
+    rejected = observed("DELETED", [], dealStatus="REJECTED", rejectReason="RC_NOT_ENOUGH_MARGIN")
+    assert rejected.position_id is None
+    assert rejected.reason == "RC_NOT_ENOUGH_MARGIN"
+
+
+def test_require_size_passes_the_size_that_was_booked() -> None:
+    opened = observed("OPEN", [("P1", "OPENED")])
+    assert opened.require_size(Decimal("0.0001")) is opened
+
+
+def test_require_size_raises_with_the_confirmation_when_the_server_rounded() -> None:
+    opened = observed("OPEN", [("P1", "OPENED")])
+    with pytest.raises(SizeAdjustedError) as caught:
+        opened.require_size(Decimal("0.00015"))
+    assert caught.value.confirmation.position_id == "P1"
+    assert caught.value.requested == Decimal("0.00015")
+    assert "o_1" in str(caught.value)
+    assert "0.00015" in str(caught.value)
+    assert "0.00010" in str(caught.value)
+
+
+def test_require_size_raises_when_no_size_was_reported() -> None:
+    opened = observed("OPEN", [("P1", "OPENED")], size=None)
+    with pytest.raises(SizeAdjustedError):
+        opened.require_size(Decimal("0.0001"))
+
+
+def test_size_adjusted_error_survives_pickling() -> None:
+    error = SizeAdjustedError(Decimal("2"), observed("OPEN", [("P1", "OPENED")]))
+    # Round-trips an object this test just built; no external data is ever unpickled.
+    copy = pickle.loads(pickle.dumps(error))  # noqa: S301
+    assert (copy.requested, copy.confirmation.position_id) == (Decimal("2"), "P1")
