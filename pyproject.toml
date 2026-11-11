@@ -49,3 +49,38 @@ packages = ["src/capitalcom"]
 testpaths = ["tests"]
 addopts = "-m 'not contract' --strict-markers"
 markers = ["contract: hits the real Capital.com demo API"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+# Legacy 1.0.4 module kept unchanged so master stays releasable; stage 3 rewrites it on top
+# of the new core and removes this exclusion.
+extend-exclude = ["src/capitalcom/client.py"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "S", "N", "SIM", "RUF", "DTZ", "T20", "BLE", "PT", "A",
+    "C4", "RET", "PTH", "ANN",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN"]
+# The package root re-exports the legacy module's star surface unchanged until stage 3.
+"src/capitalcom/__init__.py" = ["F403"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# Legacy 1.0.4 module kept unchanged so master stays releasable; stage 3 rewrites it on top
+# of the new core and removes this override.
+module = "capitalcom.client"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# Smoke tests call the untyped legacy API on purpose; stage 3 types it and removes this.
+module = "tests.legacy.*"
+disallow_untyped_calls = false

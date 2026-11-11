@@ -88,8 +88,9 @@ is allowed (ADR 0003). A test fails the build on any import cycle or outward imp
 from capitalcom import CapitalCom, Environment, Direction
 
 with CapitalCom(api_key, identifier, password, environment=Environment.DEMO) as cc:
-    deal = cc.positions.open("EURUSD", Direction.BUY, size=Decimal("1000"),
-                             stop_distance=Decimal("0.0010"))
+    deal = cc.positions.open(
+        "EURUSD", Direction.BUY, size=Decimal("1000"), stop_distance=Decimal("0.0010")
+    )
     cc.positions.amend(deal.deal_id, profit_level=Decimal("1.1000"))
     cc.positions.close(deal.deal_id)
 ```

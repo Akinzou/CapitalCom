@@ -90,10 +90,20 @@
   - Parse the documented sample below and assert `outcome is Outcome.ACCEPTED`, `level == Decimal("1.1234")`, and `date.tzinfo is UTC`:
 
     ```python
-    {"date": "2020-09-23T09:43:39.297", "status": "OPEN", "dealStatus": "ACCEPTED", "epic": "EURUSD",
-     "dealReference": "o_1", "dealId": "d_1", "affectedDeals": [{"dealId": "d_1", "status": "OPENED"}],
-     "level": Decimal("1.1234"), "size": Decimal("1000"), "direction": "BUY",
-     "guaranteedStop": False, "trailingStop": False}
+    {
+        "date": "2020-09-23T09:43:39.297",
+        "status": "OPEN",
+        "dealStatus": "ACCEPTED",
+        "epic": "EURUSD",
+        "dealReference": "o_1",
+        "dealId": "d_1",
+        "affectedDeals": [{"dealId": "d_1", "status": "OPENED"}],
+        "level": Decimal("1.1234"),
+        "size": Decimal("1000"),
+        "direction": "BUY",
+        "guaranteedStop": False,
+        "trailingStop": False,
+    }
     ```
 
   - Accepted without `dealId` gives `PENDING`.
