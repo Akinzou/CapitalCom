@@ -1,0 +1,19 @@
+# Private project rules (owner IP) - never commit
+CLAUDE.md
+
+# Python build and tool artefacts
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local agent scratch space
+.superpowers/

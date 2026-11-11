@@ -1,28 +1,87 @@
 [project]
 name = "capitalcom"
-version = "1.0.4"
+version = "2.0.0.dev0"
 description = "Client for Capital.com REST API (demo and real)"
-authors = [{name = "Wikto Jelen", email = "wiktor.dev@yelon.ovh"}]
+authors = [{name = "Wiktor Jeleń", email = "wiktor.dev@yelon.ovh"}]
 readme = "README.md"
-requires-python = ">=3.8"
-license = {text = "CC BY-NC 4.0"}
+requires-python = ">=3.11"
+license = "PolyForm-Noncommercial-1.0.0"
+license-files = ["LICENSE", "LICENSE-ADDITIONAL-PERMISSION"]
 classifiers = [
+    "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
 ]
+# 2.32.4 is the first release without CVE-2024-35195 (verify=False sticking to a connection)
+# and CVE-2024-47081 (.netrc credentials sent to the wrong host).
+dependencies = ["requests>=2.32.4"]
 
-dependencies = [
-    "requests>=2.25"
-]
+[project.optional-dependencies]
+# 44.0.1 is the first release without CVE-2024-26130 and CVE-2024-12797.
+encryption = ["cryptography>=44.0.1"]
 
 [project.urls]
 homepage = "https://github.com/Akinzou/CapitalCom"
 discord = "https://discord.gg/BARYa55KS8"
 
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+[dependency-groups]
+dev = [
+    "build>=1.2",
+    "mypy>=1.13",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "responses>=0.25",
+    "ruff>=0.8",
+    "types-requests>=2.32",
+]
 
-[tool.setuptools.packages.find]
-where = ["."]
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/capitalcom"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not contract' --strict-markers"
+markers = ["contract: hits the real Capital.com demo API"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+# Legacy 1.0.4 module kept unchanged so master stays releasable; stage 3 rewrites it on top
+# of the new core and removes this exclusion.
+extend-exclude = ["src/capitalcom/client.py"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "B", "UP", "S", "N", "SIM", "RUF", "DTZ", "T20", "BLE", "PT", "A",
+    "C4", "RET", "PTH", "ANN",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "ANN"]
+# The package root re-exports the legacy module's star surface unchanged until stage 3.
+"src/capitalcom/__init__.py" = ["F403"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+# Legacy 1.0.4 module kept unchanged so master stays releasable; stage 3 rewrites it on top
+# of the new core and removes this override.
+module = "capitalcom.client"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# Smoke tests call the untyped legacy API on purpose; stage 3 types it and removes this.
+module = "tests.legacy.*"
+disallow_untyped_calls = false
