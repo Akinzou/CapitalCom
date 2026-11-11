@@ -60,9 +60,6 @@ filterwarnings = ["ignore:CapitalClient:DeprecationWarning"]
 target-version = "py311"
 line-length = 100
 src = ["src", "tests"]
-# Legacy 1.0.4 module kept unchanged so master stays releasable; stage 3 rewrites it on top
-# of the new core and removes this exclusion.
-extend-exclude = ["src/capitalcom/client.py"]
 
 [tool.ruff.lint]
 select = [
@@ -72,8 +69,8 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "ANN"]
-# The package root re-exports the legacy module's star surface unchanged until stage 3 (F403),
-# and re-exports the 2.x names without __all__ so that surface is not narrowed (F401).
+# The package root re-exports the legacy module's __all__ with a star import (F403), and the
+# 2.x names without an __all__ of its own, so nothing a 1.x star import got is hidden (F401).
 "src/capitalcom/__init__.py" = ["F401", "F403"]
 
 [tool.mypy]
@@ -81,22 +78,8 @@ strict = true
 files = ["src", "tests"]
 mypy_path = "src"
 
-[[tool.mypy.overrides]]
-# Legacy 1.0.4 module kept unchanged so master stays releasable; stage 3 rewrites it on top
-# of the new core and removes this override.
-module = "capitalcom.client"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-# Smoke tests call the untyped legacy API on purpose; stage 3 types it and removes this.
-module = "tests.legacy.*"
-disallow_untyped_calls = false
-
 [tool.coverage.run]
 branch = true
-# Legacy 1.0.4 module, kept unchanged and untested until stage 3 rewrites it on the new core;
-# stage 3 removes this omission.
-omit = ["*/capitalcom/client.py"]
 
 [tool.coverage.report]
 fail_under = 95

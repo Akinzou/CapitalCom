@@ -5,7 +5,7 @@ per process; the migration guide maps each call to its 2.x equivalent.
 """
 
 import logging
-import time
+from collections.abc import Mapping
 from typing import Any
 
 import requests
@@ -13,7 +13,9 @@ import requests
 from capitalcom.api.dealing import submit
 from capitalcom.api.positions import PositionsResource
 from capitalcom.application.logs import get_logger
-from capitalcom.domain.errors import ValidationError
+from capitalcom.domain.errors import ApiError, CapitalComError, ValidationError
+from capitalcom.domain.parsing import format_error
+from capitalcom.legacy.accounts import as_floats
 from capitalcom.legacy.attributes import LegacyAttributes
 from capitalcom.legacy.deprecation import warn_once
 from capitalcom.legacy.raw_request import send_raw
@@ -88,7 +90,7 @@ class CapitalClient(LegacyAttributes):
             raise
         colored_log("INFO", "Session opened successfully.")
 
-    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:  # noqa: ANN401 - any requests keyword, as in 1.0.4
         """Authenticated request returning the raw response, whatever its status."""
         return send_raw(self._core, self._session, self._base_url, method, path, kwargs)
 
@@ -143,6 +145,62 @@ class CapitalClient(LegacyAttributes):
         _refuse_partial(size)
         return self._close(resolve_deal_id(self._core, deal_reference, 10, 0.1), size)
 
+    def get_open_positions(self) -> list[dict[str, Any]]:
+        """Open positions as the raw dicts of ``GET /positions``, numbers as floats."""
+        warn_once("CapitalClient.get_open_positions")
+        positions: list[dict[str, Any]] = self._get("/api/v1/positions").get("positions", [])
+        return positions
+
+    def get_balance(
+        self, account_id: str | None = None, raw: bool = False
+    ) -> float | dict[str, Any]:
+        """Balance of ``account_id`` (or of the first account, also for an unknown id)."""
+        warn_once("CapitalClient.get_balance")
+        accounts = self._get("/api/v1/accounts").get("accounts", [])
+        if not accounts:
+            raise CapitalComError("No accounts found.")
+        account = next((a for a in accounts if a.get("accountId") == account_id), accounts[0])
+        balance = account.get("balance")
+        if raw:
+            # "available" is read beside "balance", where 1.0.4 looked; the server sends it
+            # inside, so this is None, and the shape is kept rather than silently fixed.
+            return {
+                "balance": balance,
+                "available": account.get("available"),
+                "currency": account.get("currency"),
+            }
+        amount: float = balance["balance"]
+        return amount
+
+    def list_accounts(self) -> list[dict[str, Any]]:
+        """All accounts as raw dicts; each is logged at INFO, as in 1.0.4."""
+        warn_once("CapitalClient.list_accounts")
+        accounts: list[dict[str, Any]] = self._get("/api/v1/accounts").get("accounts", [])
+        if not accounts:
+            colored_log("ERROR", "No accounts found.")
+            return []
+        for acc in accounts:
+            acc_id = acc.get("accountId", "N/A")
+            currency = acc.get("currency", "N/A")
+            balance = acc.get("balance", {}).get("balance", "N/A")
+            colored_log("INFO", f"Account ID: {acc_id}, Currency: {currency}, Balance: {balance}")
+        return accounts
+
+    def top_up_demo(self, amount: float) -> None:
+        """Add ``amount`` to the demo account; the server refuses it on a live account."""
+        warn_once("CapitalClient.top_up_demo")
+        path = "/api/v1/accounts/topUp"
+        answer = self._core.api.call("POST", path, json={"amount": amount}).unwrap()
+        if isinstance(answer, Mapping) and answer.get("successful") is False:
+            raise ApiError(200, None, f"top-up not successful: {answer!r}")
+        colored_log("INFO", "Demo account topped up successfully.")
+
+    def _get(self, path: str) -> dict[str, Any]:
+        body = as_floats(self._core.api.call("GET", path).unwrap())
+        if not isinstance(body, dict):
+            raise format_error(path, "expected a JSON object")
+        return body
+
     def test_trade(self) -> None:
         """Open 0.001 lot of EURUSD, wait 5 s and close it; errors are logged, not raised."""
         warn_once("CapitalClient.test_trade")
@@ -182,60 +240,6 @@ class CapitalClient(LegacyAttributes):
         PositionsResource(self._core).close(deal_id)
         colored_log("INFO", f"Position closed successfully: {deal_id}")
         return "SUCCESS"
-
-    def get_open_positions(self):
-        resp = self._request('GET', '/api/v1/positions')
-        if resp.status_code == 200:
-            return resp.json().get('positions', [])
-        else:
-            raise Exception(f"GET /positions failed: {resp.status_code} {resp.text}")
-
-    def get_balance(self, account_id=None, raw=False):
-        resp = self._request("GET", "/api/v1/accounts")
-        if resp.status_code != 200:
-            raise Exception(f"GET /accounts failed: {resp.status_code} {resp.text}")
-
-        accounts = resp.json().get("accounts", [])
-        if not accounts:
-            raise Exception("No accounts found.")
-
-        account = next((acc for acc in accounts if acc.get("accountId") == account_id), accounts[0])
-        balance = account.get("balance")
-
-        if raw:
-            return {
-                "balance": balance,
-                "available": account.get("available"),
-                "currency": account.get("currency")
-            }
-        else:
-            return balance['balance']
-
-    def list_accounts(self):
-        resp = self._request("GET", "/api/v1/accounts")
-        if resp.status_code != 200:
-            raise Exception(f"GET /accounts failed: {resp.status_code} {resp.text}")
-
-        accounts = resp.json().get("accounts", [])
-        if not accounts:
-            colored_log("ERROR", "No accounts found.")
-            return []
-
-        for acc in accounts:
-            acc_id = acc.get("accountId", "N/A")
-            currency = acc.get("currency", "N/A")
-            balance = acc.get("balance", {}).get("balance", "N/A")
-            colored_log("INFO", f"Account ID: {acc_id}, Currency: {currency}, Balance: {balance}")
-
-        return accounts
-
-    def top_up_demo(self, amount):
-        payload = {"amount": amount}
-        resp = self._request("POST", "/api/v1/accounts/topUp", json=payload)
-        if resp.status_code == 200:
-            colored_log("INFO", "Demo account topped up successfully.")
-        else:
-            raise Exception(f"Error topping up demo account: {resp.status_code} {resp.text}")
 
 
 def _pips_to_distance(pips: float | None, pip_position: int) -> float | None:

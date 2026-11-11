@@ -3,9 +3,9 @@
 ``CapitalCom`` is the 2.x API. ``CapitalClient`` is the 1.x API, kept working for existing code.
 """
 
-# The 2.x names come from their own modules and none of them exists in the legacy module, so the
-# star import keeps the 1.x surface exactly as it was. There is deliberately no __all__: 1.x
-# code doing "from capitalcom import *" received every public legacy name, and still does.
+# The star import brings the six names of capitalcom.client.__all__, the 1.x surface. There is
+# deliberately no __all__ here: 1.x code doing "from capitalcom import *" received every public
+# legacy name, and still does, next to the 2.x names.
 from .api.client import CapitalCom
 from .application.retry import RetryPolicy
 from .client import *
