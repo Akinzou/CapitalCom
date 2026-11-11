@@ -38,6 +38,7 @@
 - Modify: `pyproject.toml`
 - Delete: `requirements.txt` (after grep: `pyproject.toml` becomes the single source of dependencies)
 - Create: `tests/__init__.py` (empty), `tests/legacy/test_smoke.py`, `docs/adr/0001-record-architecture-decisions.md`
+- Create: `.gitattributes` with `* text=auto eol=lf`. The owner works on Windows and CI runs on Linux; without it, line endings flip and file-length and format checks give different results on the two systems.
 
 **Interfaces:**
 - Produces: the installable package `capitalcom` from `src/`, and the `dev` dependency group (`pip install -e . --group dev`, pip ≥25.1).
