@@ -124,3 +124,11 @@ def test_to_utc_with_and_without_fraction_and_with_offset() -> None:
 def test_to_utc_rejects_garbage() -> None:
     with pytest.raises(ResponseFormatError, match="d"):
         to_utc("yesterday", "d")
+
+
+@pytest.mark.parametrize("direction", [1, "UP"])
+def test_bad_direction_raises(direction: object) -> None:
+    payload = documented_sample()
+    payload["direction"] = direction
+    with pytest.raises(ResponseFormatError, match="direction"):
+        DealConfirmation.from_api(payload)
