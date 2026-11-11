@@ -33,7 +33,7 @@ Sources: the OpenAPI JSON in `.superpowers/apidoc/openapi.json`, and one demo pr
 1. **`amend` takes the whole protection state.** `positions.amend(position_id, *, stop, profit)` and `orders.amend(order_id, *, good_till, stop, profit, level=None)` have required keyword arguments with no default: leaving one out is a `TypeError`, and `None` means "remove". *Why:* the server replaces everything, so a merge-style `amend(profit=...)` would silently delete the stop. *Rejected:* read-merge-write, which costs a hidden GET and relies on row shapes the probe did not cover (trailing or guaranteed stops, SELL, re-sent order distances). Required arguments can later become optional-with-keep without breaking callers.
 2. **Spec §6.1 example** becomes `cc.positions.amend(deal.position_id, stop=None, profit=TakeProfit(level=...))`: `deal.deal_id` is not the position (ADR 0007), and stops are value objects (`StopLoss`, `TakeProfit`) instead of eight flat keyword arguments, so combinations the server refuses cannot be built.
 3. **`validate` checks sizes only** (spec §6.2 lists distances too): `MarketDetails.validate(order)` checks the epic, then `DealingRules.validate(order)` checks min, max and increment. Distances are left to the server, which judges the resulting level against the live quote; a local check would have refused the accepted 150% take-profit. A rule in an unexpected unit raises `ValidationError` instead of being skipped.
-4. **Rounded sizes raise** `SizeAdjustedError(requested, confirmation)` (in `domain/confirmation.py`) after every open or create. The deal already exists, so the error carries the confirmation and its `position_id`.
+4. **Rounded sizes raise** `SizeAdjustedError(requested, confirmation)` (in `domain/confirmation.py`) after every open or create. The deal already exists, so the error carries the confirmation and its `position_id`. Observed on BTCUSD BUY only; netting (hedging off: an opposite open closes instead) is pinned by `test_netting_open` in Task 7. Cost if wrong: an open on an unobserved path raises after the deal is booked, though the error still carries the confirmation.
 5. **The "real stocks" rule (spec §6.2) is deferred:** the demo has only a CFD account, so it cannot be observed; the server stays authoritative (ADR 0010).
 6. **Error codes stay verbatim:** `error_code` keeps the `: 74490.85` suffix; splitting it would guess a format.
 7. **Position id:** `DealConfirmation.position_id` is the first affected deal with status `OPENED`, else `None` (netting). For a created order it is the order id, as is `deal_id`.
@@ -85,7 +85,7 @@ Sources: the OpenAPI JSON in `.superpowers/apidoc/openapi.json`, and one demo pr
   - `check_name("   ")` raises.
   - `caller_quantity` is importable from `request_values`.
 - [ ] **Step 2: Run** `pytest tests/unit -q`. Expected: FAIL (ImportError and the new assertions).
-- [ ] **Step 3: Implement** them and switch every caller. Delete the old copies (grep proves no other caller, and the result goes in the commit). Existing tests may change only in the error text they match.
+- [ ] **Step 3: Implement** them and switch every caller. Delete the old copies (grep proves no other caller, and the result goes in the commit). Existing tests may change only where this task changes them: error text, the `comma_list` tuple, and the `caller_quantity` import.
 - [ ] **Step 4: Run** `pytest -q`. Expected: PASS, coverage ≥95.
 - [ ] **Step 5: Commit** `refactor(domain): share request and status checks across resources`. The body says: "one rule per check, because two copies drift and one of them then lets a bad value through".
 
@@ -260,6 +260,7 @@ Sources: the OpenAPI JSON in `.superpowers/apidoc/openapi.json`, and one demo pr
     - `amend(stop=StopLoss(level=90% of bid), profit=None)` leaves `profit_level is None`;
     - `close`, after which `get` raises `NotFoundError`.
   - **`test_position_size_rules`:** validated off-grid size raises `ValidationError`; unvalidated size 1.5×min raises `SizeAdjustedError`, whose position is then closed; `maxDealSize` raises `DealRejectedError` with a non-empty `reason`.
+  - **`test_netting_open`:** open BUY at min size, then SELL at min size: no `SizeAdjustedError`, and the SELL's `position_id is None`; log the SELL's `status` and affected statuses.
   - **`test_order_round_trip`:** `create` LIMIT BUY at 50% of the bid with `good_till` +1 day; it is listed under `deal_id` with that `good_till`; `amend(level=45%, same good_till, stop=None, profit=None)` keeps `good_till`; `cancel` removes it from the list.
 - [ ] **Step 3: ADRs.**
   - ADR 0010 records the Facts and Rulings 1–7, with an Observations table filled in after CI.
