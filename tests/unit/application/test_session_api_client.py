@@ -1,9 +1,13 @@
+import logging
 import threading
 import time
 from collections.abc import Sequence
 
+import pytest
+
 from capitalcom.application.api_client import ApiClient
 from capitalcom.application.dispatcher import Dispatcher
+from capitalcom.application.logs import get_logger
 from capitalcom.application.ports import HttpRequest, HttpResponse
 from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
 from capitalcom.application.result import Err, Ok, Result
@@ -200,3 +204,41 @@ def test_closed_session_refuses_to_log_in_again() -> None:
     assert isinstance(result, Err)
     assert "closed" in str(result.error)
     assert session_posts(transport) == 1
+
+
+def test_current_tokens_does_not_log_in() -> None:
+    _, session, transport, _ = make([login_ok()])
+    assert session.current_tokens() is None
+    assert transport.requests == []
+    session.tokens()
+    current = session.current_tokens()
+    assert current is not None
+    assert current.headers() == {"CST": "cst-1", "X-SECURITY-TOKEN": "xst-1"}
+
+
+def test_adopted_tokens_are_handed_out_and_masked(caplog: pytest.LogCaptureFixture) -> None:
+    api, session, transport, _ = make([response(200, b"{}")])
+    session.adopt_tokens("cst-adopted-01", "xst-adopted-01")
+    assert api.call("GET", "/api/v1/accounts") == Ok({})
+    assert transport.requests[0].headers["CST"] == "cst-adopted-01"
+    assert session_posts(transport) == 0
+    with caplog.at_level(logging.DEBUG, logger="capitalcom"):
+        get_logger("capitalcom.x").warning("cst-adopted-01")
+    assert "cst-adopted-01" not in caplog.text
+
+
+def test_adopting_none_drops_the_session() -> None:
+    api, session, transport, _ = make([login_ok(), login_ok(2), response(200, b"{}")])
+    session.tokens()
+    session.adopt_tokens(None, "xst-1")
+    assert session.current_tokens() is None
+    api.call("GET", "/api/v1/accounts")
+    assert session_posts(transport) == 2
+
+
+def test_idle_remaining_counts_down() -> None:
+    _, session, _, clock = make([login_ok()])
+    assert session.idle_remaining_s() is None
+    session.tokens()
+    clock.advance(100)
+    assert session.idle_remaining_s() == 500
