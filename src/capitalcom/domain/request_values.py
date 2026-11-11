@@ -60,3 +60,11 @@ def bounded_int(value: object, field: str, low: int, high: int) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
         raise ValidationError(f"{field} must be an int within {low}..{high}, got {value!r}")
     return value
+
+
+def positive_quantity(value: object, field: str) -> Decimal:
+    """``caller_quantity`` that must also be greater than zero: sizes, levels, distances."""
+    amount = caller_quantity(value, field)
+    if amount <= 0:
+        raise ValidationError(f"{field} must be greater than 0, got {value!r}")
+    return amount

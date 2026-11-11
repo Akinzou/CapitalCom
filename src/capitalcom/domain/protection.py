@@ -10,7 +10,7 @@ from decimal import Decimal
 from typing import Any
 
 from capitalcom.domain.errors import ValidationError
-from capitalcom.domain.request_values import caller_quantity
+from capitalcom.domain.request_values import positive_quantity
 
 
 def _one_of(owner: str, **given: Decimal | int | None) -> tuple[str, Decimal]:
@@ -20,10 +20,7 @@ def _one_of(owner: str, **given: Decimal | int | None) -> tuple[str, Decimal]:
         names = ", ".join(given)
         raise ValidationError(f"{owner}: give exactly one of {names}")
     name, value = chosen[0]
-    amount = caller_quantity(value, f"{owner}.{name}")
-    if amount <= 0:
-        raise ValidationError(f"{owner}.{name} must be greater than 0, got {value!r}")
-    return name, amount
+    return name, positive_quantity(value, f"{owner}.{name}")
 
 
 @dataclass(frozen=True, slots=True, init=False)

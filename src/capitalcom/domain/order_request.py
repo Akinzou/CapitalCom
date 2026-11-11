@@ -9,14 +9,7 @@ from capitalcom.domain.api_time import to_api_time
 from capitalcom.domain.enums import Direction, OrderType
 from capitalcom.domain.errors import ValidationError
 from capitalcom.domain.protection import StopLoss, TakeProfit, protection_body
-from capitalcom.domain.request_values import caller_quantity, path_segment
-
-
-def _positive(value: object, field: str) -> Decimal:
-    amount = caller_quantity(value, field)
-    if amount <= 0:
-        raise ValidationError(f"{field} must be greater than 0, got {value!r}")
-    return amount
+from capitalcom.domain.request_values import path_segment, positive_quantity
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -48,7 +41,7 @@ class OrderRequest:
         protection_body(stop, profit)
         object.__setattr__(self, "epic", epic)
         object.__setattr__(self, "direction", side)
-        object.__setattr__(self, "size", _positive(size, "size"))
+        object.__setattr__(self, "size", positive_quantity(size, "size"))
         object.__setattr__(self, "stop", stop)
         object.__setattr__(self, "profit", profit)
 
@@ -87,7 +80,7 @@ class WorkingOrderRequest:
         if good_till is not None:
             to_api_time(good_till, "good_till")
         object.__setattr__(self, "order", order)
-        object.__setattr__(self, "level", _positive(level, "level"))
+        object.__setattr__(self, "level", positive_quantity(level, "level"))
         object.__setattr__(self, "type", kind)
         object.__setattr__(self, "good_till", good_till)
 
