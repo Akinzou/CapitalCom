@@ -33,3 +33,10 @@ class Resolution(StrEnum):
     HOUR_4 = "HOUR_4"
     DAY = "DAY"
     WEEK = "WEEK"
+
+
+class OrderType(StrEnum):
+    """Kind of working order: LIMIT fills at the level or better, STOP once it is reached."""
+
+    LIMIT = "LIMIT"
+    STOP = "STOP"
