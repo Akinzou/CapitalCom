@@ -89,7 +89,8 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 
 In addition, any individual may use it to trade their own personal Capital.com accounts,
 demo or live, including for profit. See [LICENSE-ADDITIONAL-PERMISSION](https://github.com/Akinzou/CapitalCom/blob/master/LICENSE-ADDITIONAL-PERMISSION)
-for the exact terms. Commercial licences are available on request.
+for the exact terms. Commercial licences are available on request: root@yelon.dev or
+wiktorjn@gmail.com.
 
 ---
 

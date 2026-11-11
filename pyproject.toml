@@ -2,7 +2,7 @@
 name = "capitalcom"
 version = "2.0.0.dev0"
 description = "Client for Capital.com REST API (demo and real)"
-authors = [{name = "Wikto Jelen", email = "wiktor.dev@yelon.ovh"}]
+authors = [{name = "Wiktor Jeleń", email = "wiktor.dev@yelon.ovh"}]
 readme = "README.md"
 requires-python = ">=3.11"
 license = "PolyForm-Noncommercial-1.0.0"
