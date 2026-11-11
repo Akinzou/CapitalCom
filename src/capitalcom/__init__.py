@@ -11,7 +11,7 @@ from .application.retry import RetryPolicy
 from .client import *
 from .domain.account import Account, AccountPreferences, Balance, Leverage, SessionInfo
 from .domain.confirmation import DealConfirmation
-from .domain.enums import Direction, Environment
+from .domain.enums import Direction, Environment, Resolution
 from .domain.errors import (
     ApiError,
     AuthenticationError,
@@ -26,3 +26,15 @@ from .domain.errors import (
     ValidationError,
 )
 from .domain.history import Activity, Transaction
+from .domain.market_details import (
+    DealingRules,
+    Instrument,
+    MarketDetails,
+    MarketSnapshot,
+    PipScale,
+    RuleValue,
+)
+from .domain.markets import Market, MarketNode, NodeContents
+from .domain.prices import BidAsk, PriceBar
+from .domain.sentiment import Sentiment
+from .domain.watchlist import Watchlist, WatchlistCreation

@@ -138,6 +138,21 @@ def test_public_exports() -> None:
         "Leverage",
         "Activity",
         "Transaction",
+        "Market",
+        "MarketNode",
+        "NodeContents",
+        "MarketDetails",
+        "Instrument",
+        "DealingRules",
+        "RuleValue",
+        "MarketSnapshot",
+        "PipScale",
+        "Resolution",
+        "PriceBar",
+        "BidAsk",
+        "Sentiment",
+        "Watchlist",
+        "WatchlistCreation",
     }
     assert expected <= set(dir(capitalcom))
 
