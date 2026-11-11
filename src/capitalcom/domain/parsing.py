@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from capitalcom.domain.enums import Direction
 from capitalcom.domain.errors import ApiError, ResponseFormatError
 
 # Parsers only ever see bodies of successful responses; a non-2xx body is turned into an
@@ -158,3 +159,19 @@ def check_success(answer: object, what: str) -> None:
     """
     if not isinstance(answer, Mapping) or answer.get("status") != "SUCCESS":
         raise ApiError(_SUCCESS_STATUS, None, f"{what}: {answer!r}")
+
+
+def require_direction(payload: Mapping[str, Any], key: str) -> Direction:
+    """Read a required ``BUY``/``SELL``; any other value is a format error."""
+    value = require_str(payload, key)
+    try:
+        return Direction(value)
+    except ValueError:
+        raise format_error(key, f"unknown value {value!r}") from None
+
+
+def flag(payload: Mapping[str, Any], key: str) -> bool:
+    """Read a boolean the server leaves out when it is false; any non-boolean is an error."""
+    if key not in payload:
+        return False
+    return require_bool(payload, key)
