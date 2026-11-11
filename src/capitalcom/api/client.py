@@ -11,6 +11,7 @@ from capitalcom.api.markets import MarketsResource
 from capitalcom.api.prices import PricesResource
 from capitalcom.api.sentiment import SentimentResource
 from capitalcom.api.session_resource import SessionResource
+from capitalcom.api.watchlists import WatchlistsResource
 from capitalcom.application.logs import get_logger
 from capitalcom.application.result import Err
 from capitalcom.application.retry import RetryPolicy
@@ -61,6 +62,7 @@ class CapitalCom:
         self.markets = MarketsResource(self._core)
         self.prices = PricesResource(self._core)
         self.sentiment = SentimentResource(self._core)
+        self.watchlists = WatchlistsResource(self._core)
 
     def __repr__(self) -> str:
         # The identifier is the account's e-mail address, so only the environment is shown.
