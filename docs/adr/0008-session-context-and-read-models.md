@@ -100,6 +100,16 @@ The documented history limits are checked before sending:
 
 `accounts.top_up` refuses `Environment.LIVE` locally.
 
+## Observations (demo, 2026-11-11, first contract run on PR #4)
+
+| Question | Observed | Pinned by |
+|---|---|---|
+| What does a switch to the already active account return? | HTTP 400, `error.not-different.accountId`, the value of `SWITCH_ALREADY_ACTIVE` | `test_probe_switch_to_the_active_account` |
+| Does the server accept RSA PKCS#1 v1.5 over UTF-8 `password\|timeStamp`? | Yes, the encrypted login succeeded | `test_encrypted_password_login` |
+| Do real history rows carry the required fields? | Yes: 4 activities (`POSITION`, `WORKING_ORDER`) and 15 `TRADE` transactions parsed. A detailed activity adds a `details` object, which stays in `raw` | `test_history_parses_rows_of_a_fresh_trade` |
+| Does the login body name the account? | Yes, `currentAccountId` matches the single demo account | `test_login_body_carries_current_account_id` |
+| Does a switch between two accounts change the tokens? | Not observed: the demo login has one account, so the round trip is skipped | `test_switch_round_trip` |
+
 ## Consequences
 
 - Switching accounts is safe across renewals. The cost is that one renewal may take two
