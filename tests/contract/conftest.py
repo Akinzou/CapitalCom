@@ -107,3 +107,25 @@ def btc(demo_core: Core) -> Iterator[Market]:
         close_position(demo_core, deal_id)
     remaining = set(btc_position_ids(demo_core)) - before
     assert not remaining, f"positions opened by the run are still open: {sorted(remaining)}"
+
+
+def btc_order_ids(core: Core) -> set[str]:
+    """Working orders on BTCUSD of the demo account."""
+    payload = core.api.call("GET", "/api/v1/workingorders").unwrap()
+    return {
+        item["workingOrderData"]["dealId"]
+        for item in payload["workingOrders"]
+        if item["workingOrderData"]["epic"] == EPIC
+    }
+
+
+@pytest.fixture
+def btc_orders(demo_core: Core) -> Iterator[None]:
+    """Afterwards cancels every BTCUSD order the test placed, and none that existed before."""
+    before = btc_order_ids(demo_core)
+    yield
+    for deal_id in sorted(btc_order_ids(demo_core) - before):
+        log.warning("cancelling an order left by the test")
+        cancelled = demo_core.api.call("DELETE", f"/api/v1/workingorders/{deal_id}").unwrap()
+        demo_core.confirmer.confirm(cancelled["dealReference"]).unwrap()
+    assert not btc_order_ids(demo_core) - before, "orders placed by the run are still open"

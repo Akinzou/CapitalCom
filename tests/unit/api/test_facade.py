@@ -153,6 +153,14 @@ def test_public_exports() -> None:
         "Sentiment",
         "Watchlist",
         "WatchlistCreation",
+        "StopLoss",
+        "TakeProfit",
+        "OrderRequest",
+        "WorkingOrderRequest",
+        "OrderType",
+        "Position",
+        "WorkingOrder",
+        "SizeAdjustedError",
     }
     assert expected <= set(dir(capitalcom))
 
