@@ -85,3 +85,18 @@ def market_row(
         "pipPosition": pip_position,
         "tickSize": Decimal(tick_size),
     }
+
+
+def wire(payload: Any) -> Any:
+    """``payload`` as the server sends it: ``Decimal`` becomes a JSON number.
+
+    The short decimals used here survive the float round trip, and the client decodes JSON
+    numbers back into ``Decimal``.
+    """
+    if isinstance(payload, Decimal):
+        return float(payload)
+    if isinstance(payload, dict):
+        return {key: wire(value) for key, value in payload.items()}
+    if isinstance(payload, list):
+        return [wire(value) for value in payload]
+    return payload

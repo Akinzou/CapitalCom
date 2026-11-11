@@ -7,6 +7,7 @@ import requests
 from capitalcom.api.accounts import AccountsResource
 from capitalcom.api.composition import Core, build_core
 from capitalcom.api.history import HistoryResource
+from capitalcom.api.markets import MarketsResource
 from capitalcom.api.session_resource import SessionResource
 from capitalcom.application.logs import get_logger
 from capitalcom.application.result import Err
@@ -55,6 +56,7 @@ class CapitalCom:
         self.session = SessionResource(self._core)
         self.accounts = AccountsResource(self._core)
         self.history = HistoryResource(self._core)
+        self.markets = MarketsResource(self._core)
 
     def __repr__(self) -> str:
         # The identifier is the account's e-mail address, so only the environment is shown.
