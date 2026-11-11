@@ -54,7 +54,10 @@ All notable changes to this project are documented in this file. The format foll
    - `size=0` still closes the whole position.
 3. **Typed errors.** Errors are subclasses of `CapitalComError`, which derives from
    `Exception`, instead of bare `Exception`. Examples are `AuthenticationError`, `ApiError`
-   and `NotFoundError`; "No accounts found." is a `CapitalComError`.
+   and `NotFoundError`; "No accounts found." is a `CapitalComError`. Network failures are
+   `TransportError`s that are also `requests.exceptions.ConnectionError`, so existing
+   `except requests.exceptions.ConnectionError` and `except RequestException` clauses still
+   catch them; a trade whose outcome is unknown is not one of them (change 5).
 4. **Rejected opens raise.** A rejected open raises `DealRejectedError`. 1.0.4 returned a
    dealId as if the trade had succeeded.
 5. **Timeouts.**
@@ -76,5 +79,6 @@ All notable changes to this project are documented in this file. The format foll
 11. **Opens that open nothing.** An open that nets against an existing position raises
     `CapitalComError` saying no position was opened. 1.0.4 also raised, after its retries.
     A size the server rounded is logged as a warning.
-12. **Overriding is unsupported.** Overriding `_request` or `login_session` in a subclass no
-    longer changes how the public methods reach the server.
+12. **Overriding is narrower.** The public methods still call each other through `self`, as in
+    1.0.4. Overriding `_request` or `login_session` in a subclass no longer changes how they
+    reach the server, and the constructor no longer calls `login_session`.

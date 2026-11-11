@@ -94,6 +94,10 @@ Instead it:
 ### Errors
 
 - HTTP errors are the typed 2.x errors, all subclasses of `Exception`.
+- Network failures are raised as `LegacyTransportError`, a `TransportError` that is also a
+  `requests.exceptions.ConnectionError`. In 1.0.4 they were `requests` exceptions, and bots
+  retry on those; a plain `TransportError` would stop such a bot on the first network blip.
+  `OutcomeUnknownError` stays outside that hierarchy, so a retry clause cannot resend a trade.
 - Errors 1.0.4 raised without an HTTP status become `CapitalComError`, for example "No
   accounts found.". A body that is not a JSON object raises `ResponseFormatError`.
 - `top_up_demo` raises `ApiError` when the server answers `"successful": false`; 1.0.4
@@ -109,8 +113,11 @@ Instead it:
 
 ## Consequences
 
-- Overriding `_request` or `login_session` in a subclass no longer changes how the public
-  methods call the server; that is not supported.
+- Public methods still call each other through `self` (`open_forex_position` through
+  `lot_to_size`, `pips_to_profit_distance` and `open_raw_position`; `close_position_by_ref`
+  through `get_deal_by_ref` and `close_position_by_id`; `test_trade` through both), so a
+  subclass guard or a JPY fix in an override keeps applying. Overriding `_request` or
+  `login_session` no longer changes how they reach the server.
 - A bug in the 2.x core now reaches 1.x users too. The golden suite and the legacy contract
   test (`test_legacy_round_trip`) run in CI to catch it.
 - The layer is deleted in 3.0, with `capitalcom.legacy` and the golden suite.

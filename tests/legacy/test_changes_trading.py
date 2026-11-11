@@ -7,6 +7,7 @@ import pytest
 import requests
 import responses
 
+from capitalcom.client import CapitalClient
 from capitalcom.domain.errors import (
     CapitalComError,
     DealRejectedError,
@@ -14,7 +15,7 @@ from capitalcom.domain.errors import (
     ValidationError,
 )
 from capitalcom.legacy import deprecation
-from tests.legacy.conftest import DEMO, legacy, sent
+from tests.legacy.conftest import API_KEY, DEMO, IDENTIFIER, PASSWORD, legacy, sent
 from tests.legacy.golden.payloads import confirm
 
 POSITIONS = f"{DEMO}/api/v1/positions"
@@ -112,3 +113,51 @@ def test_close_by_ref_resolves_then_closes(api: responses.RequestsMock) -> None:
     closable(api)
     assert legacy().close_position_by_ref("o_1") == "SUCCESS"
     assert [u for _, u, _ in sent(api)] == [OPEN_CONFIRM, f"{POSITIONS}/P1", CLOSE_CONFIRM]
+
+
+class Guarded(CapitalClient):
+    """A 1.x subclass that guards opens and fixes the pip scale, as user code might."""
+
+    def __init__(self) -> None:
+        super().__init__(API_KEY, IDENTIFIER, PASSWORD)
+        self.opens: list[tuple[str, float]] = []
+        self.closes: list[str] = []
+
+    def open_raw_position(
+        self,
+        epic: str,
+        size: float,
+        direction: str,
+        stop_dist: float | None = None,
+        profit_dist: float | None = None,
+    ) -> str:
+        self.opens.append((epic, size))
+        return super().open_raw_position(epic, size, direction, stop_dist, profit_dist)
+
+    def pips_to_profit_distance(self, pips: float | None, pip_position: int) -> float | None:
+        return super().pips_to_profit_distance(pips, 3)
+
+    def close_position_by_id(self, deal_id: str, size: float | None = None) -> str:
+        self.closes.append(deal_id)
+        return super().close_position_by_id(deal_id, size)
+
+
+def test_subclass_overrides_are_still_called(api: responses.RequestsMock) -> None:
+    opened(api)
+    closable(api)
+    client = Guarded()
+    client.open_forex_position("USDJPY", 0.01, "BUY", stop_dist=100)
+    assert client.opens == [("USDJPY", 0.01 * 100000)]
+    post = next(body for method, _, body in sent(api) if method == "POST")
+    assert post["stopDistance"] == 100 * 10**-3
+    client.close_position_by_ref("o_1")
+    assert client.closes == ["P1"]
+
+
+def test_trade_goes_through_overridable_methods(api: responses.RequestsMock) -> None:
+    opened(api)
+    closable(api)
+    client = Guarded()
+    client.test_trade()
+    assert client.opens == [("EURUSD", 0.001 * 100000)]
+    assert client.closes == ["P1"]

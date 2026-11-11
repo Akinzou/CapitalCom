@@ -4,9 +4,10 @@ test here failed against 1.0.4."""
 from decimal import Decimal
 
 import pytest
+import requests
 import responses
 
-from capitalcom.domain.errors import ApiError, CapitalComError, NotFoundError
+from capitalcom.domain.errors import ApiError, CapitalComError, NotFoundError, TransportError
 from tests.legacy.conftest import DEMO, legacy
 
 ACCOUNTS = f"{DEMO}/api/v1/accounts"
@@ -40,3 +41,12 @@ def test_floats_are_exact() -> None:
     value = {"a": [Decimal("1.0712"), 3, "x", None, True], "b": {"c": Decimal("74549.75")}}
     assert as_floats(value) == {"a": [1.0712, 3, "x", None, True], "b": {"c": 74549.75}}
     assert isinstance(as_floats(Decimal("2")), float)
+
+
+def test_network_errors_are_still_requests_errors(api: responses.RequestsMock) -> None:
+    client = legacy()
+    api.get(ACCOUNTS, body=requests.exceptions.ConnectionError("unreachable"))
+    with pytest.raises(requests.exceptions.ConnectionError) as raised:
+        client.get_balance()
+    assert isinstance(raised.value, TransportError)
+    assert "unreachable" not in str(raised.value)
