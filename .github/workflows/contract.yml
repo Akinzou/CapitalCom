@@ -1,0 +1,44 @@
+name: Contract (demo)
+
+# Runs the contract tests against the Capital.com DEMO server. The host is fixed in
+# tests/contract/conftest.py; nothing here can point the tests at the live server.
+on:
+  pull_request:
+    branches: [master]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two runs trading the same demo account at once would close each other's positions.
+concurrency:
+  group: contract-demo
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    # pull_request (never pull_request_target) from this repository only: a fork's code never
+    # runs with the account secrets.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e . --group dev
+      # The only step that sees the secrets. INFO logs record the probed behaviour (status
+      # codes, error codes, deal ids) for ADR 0007; tokens are redacted by the library.
+      - name: Contract tests
+        env:
+          CAPITAL_API_KEY: ${{ secrets.CAPITAL_API_KEY }}
+          CAPITAL_IDENTIFIER: ${{ secrets.CAPITAL_IDENTIFIER }}
+          CAPITAL_PASSWORD: ${{ secrets.CAPITAL_PASSWORD }}
+        run: pytest -m contract -v -rA --log-cli-level=INFO

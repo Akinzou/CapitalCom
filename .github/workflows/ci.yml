@@ -75,10 +75,12 @@ jobs:
       # report is visible instead of looking like "no findings".
       - name: Report scan (WARNING)
         continue-on-error: true
+        # tee keeps the findings in the job log too, where they can be read and quoted
+        # without opening the job summary page.
         run: |
-          set +e
+          set +e -o pipefail
           semgrep scan --config p/python --config p/security-audit --config p/secrets \
-            --severity WARNING --metrics=off . > semgrep-warnings.txt
+            --severity WARNING --metrics=off . | tee semgrep-warnings.txt
           rc=$?
           { echo '## Semgrep WARNING findings'; echo '```'; cat semgrep-warnings.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
