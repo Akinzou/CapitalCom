@@ -97,3 +97,25 @@ def test_real_package_clean() -> None:
     graph = build_graph(SRC, "capitalcom")
     assert layer_violations(graph) == []
     assert find_cycle(graph) is None
+
+
+def test_core_rejects_unlisted_stdlib_io(tmp_path: Path) -> None:
+    root = _package(
+        tmp_path,
+        {"pkg/domain/a.py": "import os\n", "pkg/application/b.py": "import urllib.request\n"},
+    )
+    violations = layer_violations(build_graph(root, "pkg"))
+    assert len(violations) == 2
+    assert any("os" in v for v in violations)
+    assert any("urllib.request" in v for v in violations)
+
+
+def test_core_allows_pure_stdlib(tmp_path: Path) -> None:
+    root = _package(
+        tmp_path,
+        {
+            "pkg/domain/a.py": "import datetime\nfrom decimal import Decimal\n",
+            "pkg/application/b.py": "from urllib.parse import quote\nimport threading\n",
+        },
+    )
+    assert layer_violations(build_graph(root, "pkg")) == []

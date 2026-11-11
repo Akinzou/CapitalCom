@@ -48,10 +48,12 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ matrix.python-version }}
+      # Non-editable install: tests import the built package from site-packages, so a module
+      # left out of the wheel fails here instead of shipping (ADR 0002).
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e . --group dev
+          pip install . --group dev
       - run: pytest --cov=capitalcom --cov-report=term-missing
 
   semgrep:
@@ -67,13 +69,19 @@ jobs:
       - name: Blocking scan (ERROR)
         run: >
           semgrep scan --config p/python --config p/security-audit --config p/secrets
-          --severity ERROR --error --metrics=off src
-      - name: Report scan (WARNING, copied into the PR description)
+          --severity ERROR --error --metrics=off .
+      # WARNING findings do not block; the author copies them into the PR description with a
+      # fix-or-accept decision. A scanner error still marks this step failed, so a broken
+      # report is visible instead of looking like "no findings".
+      - name: Report scan (WARNING)
         continue-on-error: true
         run: |
+          set +e
           semgrep scan --config p/python --config p/security-audit --config p/secrets \
-            --severity WARNING --metrics=off src > semgrep-warnings.txt 2>&1 || true
+            --severity WARNING --metrics=off . > semgrep-warnings.txt
+          rc=$?
           { echo '## Semgrep WARNING findings'; echo '```'; cat semgrep-warnings.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
 
   build:
     runs-on: ubuntu-latest

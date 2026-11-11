@@ -1,0 +1,6 @@
+# Present on purpose: an existing .semgrepignore replaces Semgrep's defaults, which skip tests/.
+# Recorded HTTP fixtures will live under tests/, and they are exactly where a leaked session
+# token or API key would hide, so tests/ must be scanned by p/secrets.
+.venv/
+dist/
+build/

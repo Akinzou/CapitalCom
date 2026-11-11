@@ -20,8 +20,9 @@ accounts for profit; commercial use (businesses, services, products) needs a sep
   trade their own personal accounts, demo or live, including for profit. It excludes use for
   others, inside organizations, and in distributed or hosted products.
 - Commercial licences are offered by the owner on request.
-- Packaging metadata follows PEP 639: `license = "LicenseRef-PolyForm-Noncommercial-1.0.0"` and
-  `license-files`. No `License ::` classifier is set, because PEP 639 forbids combining them.
+- Packaging metadata follows PEP 639: `license = "PolyForm-Noncommercial-1.0.0"` (the SPDX
+  identifier, so licence scanners recognise it) and `license-files`. The personal-trading grant
+  only adds permissions, so the base identifier never overstates what users may do. No `License ::` classifier is set, because PEP 639 forbids combining them.
 - The CHANGELOG states the 1.0.x metadata conflict as a fact and makes no claim about which
   licence applied to those releases.
 

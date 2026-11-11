@@ -14,4 +14,4 @@ All notable changes to this project are documented in this file. The format foll
   trading in `LICENSE-ADDITIONAL-PERMISSION`. Commercial licences are available on request.
 - **Python support.** Python 3.11 or newer is required. Python 3.8–3.10 are no longer
   supported.
-- **Dependencies.** `requests>=2.32.3` is required.
+- **Dependencies.** `requests>=2.32.4` is required.

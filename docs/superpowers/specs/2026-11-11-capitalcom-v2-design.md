@@ -273,7 +273,7 @@ Architecture decisions are recorded as ADRs in `docs/adr/` as they are made, not
 - Additional permission grant (`LICENSE-ADDITIONAL-PERMISSION`): a natural person may use the
   software to trade their own personal accounts, demo or live, including for profit. This does
   not cover use on behalf of others, inside a business, or in a distributed or hosted product.
-- `pyproject.toml` uses `license = "LicenseRef-PolyForm-Noncommercial-1.0.0"` and
+- `pyproject.toml` uses `license = "PolyForm-Noncommercial-1.0.0"` (SPDX id) and
   `license-files` (PEP 639). The MIT classifier is removed.
 - 1.0.x carried conflicting license metadata: the license field and README said CC BY-NC 4.0,
   and the classifier said MIT. The CHANGELOG states exactly that and makes no claim about which

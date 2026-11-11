@@ -12,17 +12,47 @@ from pathlib import Path
 
 LAYER_RANKS = {"domain": 0, "application": 1, "infrastructure": 2, "api": 3}
 TOP_RANK = 4
-# Ranks 0-1 must stay I/O-free so they can be tested with in-memory fakes; time goes through
-# the Clock port instead of the time module.
+# Ranks 0-1 must stay I/O-free so they can be tested with in-memory fakes. An allowlist rather
+# than a denylist, because a denylist silently admits every I/O module nobody thought to list
+# (os, ssl, urllib.request, websockets...). Time still goes through the Clock port; ruff's DTZ
+# rules catch naive datetime.now() calls that an import check cannot see.
 CORE_MAX_RANK = 1
-FORBIDDEN_IN_CORE = frozenset(
-    {"requests", "urllib3", "cryptography", "websocket", "socket", "time"}
+CORE_ALLOWED_IMPORTS = frozenset(
+    {
+        "__future__",
+        "abc",
+        "base64",
+        "collections",
+        "contextlib",
+        "dataclasses",
+        "datetime",
+        "decimal",
+        "email.utils",
+        "enum",
+        "functools",
+        "hmac",
+        "itertools",
+        "json",
+        "logging",
+        "math",
+        "operator",
+        "random",
+        "re",
+        "threading",
+        "types",
+        "typing",
+        "urllib.parse",
+    }
 )
+
+
+def _core_allowed(name: str) -> bool:
+    return any(name == a or name.startswith(a + ".") for a in CORE_ALLOWED_IMPORTS)
 
 
 @dataclass(frozen=True)
 class ImportGraph:
-    """Edges between a package's own modules, plus each module's third-party/stdlib roots."""
+    """Edges between a package's own modules, plus each module's external import targets."""
 
     package: str
     internal: dict[str, set[str]] = field(default_factory=dict)
@@ -72,7 +102,7 @@ def build_graph(src_root: Path, package: str) -> ImportGraph:
                 if target in modules and target != name:
                     internal.add(target)
             elif target:
-                external.add(target.split(".")[0])
+                external.add(target)
         graph.internal[name] = _drop_parents_of_children(internal)
         graph.external[name] = external
     return graph
@@ -101,9 +131,13 @@ def layer_violations(graph: ImportGraph) -> list[str]:
                 found.append(f"{module} -> {target} (imports a higher layer)")
     for module, names in sorted(graph.external.items()):
         if rank(graph, module) <= CORE_MAX_RANK:
+            # "from x import y" records both x and x.y; reporting only the origin keeps one
+            # violation per offending import.
+            origins = {n for n in names if not any(n.startswith(o + ".") for o in names)}
             found.extend(
-                f"{module} -> {name} (I/O library in core layer)"
-                for name in sorted(names & FORBIDDEN_IN_CORE)
+                f"{module} -> {name} (not allowed in core layer)"
+                for name in sorted(origins)
+                if not _core_allowed(name)
             )
     return found
 

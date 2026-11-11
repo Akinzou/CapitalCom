@@ -14,12 +14,14 @@ same way on a contributor's machine as in CI.
 - **Build backend: hatchling ≥ 1.27.** It supports PEP 639 licence metadata
   (`license = "<SPDX expression>"`, `license-files`) and the `src/` layout without extra
   configuration.
-- **Layout: `src/capitalcom`.** Tests import the installed package, not the working tree, so a
-  packaging mistake fails the tests instead of shipping.
+- **Layout: `src/capitalcom`.** CI installs the package non-editably and tests import it from
+  site-packages, so a module left out of the wheel fails the tests instead of shipping.
 - **Lint and format: ruff.** One tool replaces flake8, isort, pyupgrade, bandit-style checks
   (`S`) and black. It also formats Python code blocks inside Markdown, which keeps the examples
   in the docs runnable-looking.
-- **Types: mypy `--strict`** over `src` and `tests`; the package ships `py.typed`.
+- **Types: mypy `--strict`** over `src` and `tests`. The `py.typed` marker is deferred until
+  stage 3 types the legacy surface: shipping it while `CapitalClient` is unannotated would turn
+  every legacy call into a `no-untyped-call` error for users who run mypy strictly.
 - **Tests: pytest** with pytest-cov. Contract tests against the live demo API carry the
   `contract` marker and are excluded from the default run.
 - **Static analysis: Semgrep 1.185** with the `p/python`, `p/security-audit` and `p/secrets`

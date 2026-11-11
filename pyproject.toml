@@ -5,7 +5,7 @@ description = "Client for Capital.com REST API (demo and real)"
 authors = [{name = "Wikto Jelen", email = "wiktor.dev@yelon.ovh"}]
 readme = "README.md"
 requires-python = ">=3.11"
-license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
+license = "PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE", "LICENSE-ADDITIONAL-PERMISSION"]
 classifiers = [
     "Development Status :: 4 - Beta",
@@ -15,13 +15,14 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Operating System :: OS Independent",
-    "Typing :: Typed",
 ]
-# 2.32.0 fixed Session.verify=False persisting across requests to the same host.
-dependencies = ["requests>=2.32.3"]
+# 2.32.4 is the first release without CVE-2024-35195 (verify=False sticking to a connection)
+# and CVE-2024-47081 (.netrc credentials sent to the wrong host).
+dependencies = ["requests>=2.32.4"]
 
 [project.optional-dependencies]
-encryption = ["cryptography>=42"]
+# 44.0.1 is the first release without CVE-2024-26130 and CVE-2024-12797.
+encryption = ["cryptography>=44.0.1"]
 
 [project.urls]
 homepage = "https://github.com/Akinzou/CapitalCom"
