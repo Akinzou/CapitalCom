@@ -175,3 +175,27 @@ def test_success_body_that_is_not_json_is_response_format_error() -> None:
     assert isinstance(result, Err)
     assert isinstance(result.error, ResponseFormatError)
     assert "maintenance" in result.error.body
+
+
+def test_logout_after_idle_timeout_sends_nothing() -> None:
+    api, session, transport, clock = make([login_ok(), response(200, b"{}")])
+    api.call("GET", "/api/v1/accounts")
+    clock.advance(600)
+    assert session.logout() == Ok(None)
+    assert [r.method for r in transport.requests] == ["POST", "GET"]
+
+
+def test_logout_answered_401_counts_as_logged_out() -> None:
+    api, session, _, _ = make([login_ok(), response(200, b"{}"), response(401, b"{}")])
+    api.call("GET", "/api/v1/accounts")
+    assert session.logout() == Ok(None)
+
+
+def test_closed_session_refuses_to_log_in_again() -> None:
+    api, session, transport, _ = make([login_ok(), response(200, b"{}")])
+    api.call("GET", "/api/v1/accounts")
+    assert session.close() == Ok(None)
+    result = api.call("GET", "/api/v1/accounts")
+    assert isinstance(result, Err)
+    assert "closed" in str(result.error)
+    assert session_posts(transport) == 1

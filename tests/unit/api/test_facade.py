@@ -5,7 +5,7 @@ import pytest
 import responses
 
 from capitalcom.api.client import CapitalCom
-from capitalcom.domain.errors import AuthenticationError, OutcomeUnknownError
+from capitalcom.domain.errors import ApiError, AuthenticationError, CapitalComError
 
 DEMO = "https://demo-api-capital.backend-capital.com"
 TOKENS = {"CST": "facade-cst-01", "X-SECURITY-TOKEN": "facade-xst-01"}
@@ -64,7 +64,7 @@ def test_errors_are_raised_as_typed_exceptions() -> None:
 def test_exit_keeps_the_original_exception_and_warns_about_logout(
     api: responses.RequestsMock, caplog: pytest.LogCaptureFixture
 ) -> None:
-    api.delete(f"{DEMO}/api/v1/session", status=500)
+    api.delete(f"{DEMO}/api/v1/session", status=400, json={"errorCode": "error.x"})
 
     def failing_block() -> None:
         with new_client() as cc:
@@ -79,10 +79,10 @@ def test_exit_keeps_the_original_exception_and_warns_about_logout(
 
 
 def test_close_raises_when_logout_fails(api: responses.RequestsMock) -> None:
-    api.delete(f"{DEMO}/api/v1/session", status=500)
+    api.delete(f"{DEMO}/api/v1/session", status=400, json={"errorCode": "error.x"})
     cc = new_client()
     cc.session.ping()
-    with pytest.raises(OutcomeUnknownError, match="DELETE /api/v1/session"):
+    with pytest.raises(ApiError, match=r"error.x"):
         cc.close()
 
 
@@ -133,3 +133,13 @@ def test_public_exports() -> None:
         "ConfirmationTimeoutError",
     }
     assert expected <= set(dir(capitalcom))
+
+
+def test_use_after_close_raises_and_does_not_log_in(api: responses.RequestsMock) -> None:
+    api.delete(f"{DEMO}/api/v1/session", json={"status": "SUCCESS"})
+    cc = new_client()
+    cc.session.ping()
+    cc.close()
+    with pytest.raises(CapitalComError, match="closed"):
+        cc.session.ping()
+    assert calls(api).count(("POST", "/api/v1/session")) == 1

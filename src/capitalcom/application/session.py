@@ -7,12 +7,16 @@ from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.logs import forget_secret, get_logger, register_secret
 from capitalcom.application.ports import Clock, HttpRequest
 from capitalcom.application.result import Err, Ok, Result
-from capitalcom.domain.errors import CapitalComError, ResponseFormatError
+from capitalcom.application.retry import SESSION_PATH
+from capitalcom.domain.errors import (
+    AuthenticationError,
+    CapitalComError,
+    ResponseFormatError,
+)
 from capitalcom.domain.secret import Secret
 
 _log = get_logger(__name__)
 
-SESSION_PATH = "/api/v1/session"
 # Capital.com expires a session 10 minutes after its last use. Renewing 30 s early covers
 # clock drift and the time a slow request spends in flight.
 IDLE_TIMEOUT_S = 600.0
@@ -54,12 +58,15 @@ class SessionManager:
         self._tokens: SessionTokens | None = None
         self._last_used = 0.0
         self._generation = 0
+        self._closed = False
         register_secret(credentials.api_key.reveal())
         register_secret(credentials.password.reveal())
 
     def tokens(self) -> Result[SessionTokens, CapitalComError]:
         """Return current tokens, logging in first when there are none or they are near expiry."""
         with self._lock:
+            if self._closed:
+                return Err(CapitalComError("client is closed; create a new one"))
             now = self._clock.monotonic()
             if self._tokens is not None and now - self._last_used < IDLE_TIMEOUT_S - RENEW_MARGIN_S:
                 return Ok(self._tokens)
@@ -78,21 +85,31 @@ class SessionManager:
                 self._drop()
 
     def logout(self) -> Result[None, CapitalComError]:
-        """End the session on the server; a no-op when there is none."""
+        """End the session on the server; a no-op when there is none or it already expired."""
         with self._lock:
             tokens = self._tokens
             if tokens is None:
                 return Ok(None)
+            idle = self._clock.monotonic() - self._last_used
             # Forgotten locally whatever the server says: the tokens die server-side within
             # ten minutes anyway, and keeping them would let a failed logout be reused.
-            self._tokens = None
+            self._drop()
+            if idle >= IDLE_TIMEOUT_S - RENEW_MARGIN_S:
+                # The server has dropped (or is about to drop) the session and would answer
+                # 401; there is nothing left to end.
+                return Ok(None)
             result = self._dispatcher.send(HttpRequest("DELETE", SESSION_PATH, tokens.headers()))
-            forget_secret(tokens.cst.reveal())
-            forget_secret(tokens.security_token.reveal())
-        if isinstance(result, Err):
+        # 401 means the session is already gone, which is what logout wanted.
+        if isinstance(result, Err) and not isinstance(result.error, AuthenticationError):
             return result
         _log.info("logged out")
         return Ok(None)
+
+    def close(self) -> Result[None, CapitalComError]:
+        """Log out and refuse any later login, so a closed client cannot leak a new session."""
+        with self._lock:
+            self._closed = True
+        return self.logout()
 
     def _drop(self) -> None:
         if self._tokens is not None:

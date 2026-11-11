@@ -1,3 +1,6 @@
+from datetime import UTC, datetime
+from decimal import Decimal
+
 import pytest
 
 from capitalcom.application.dispatcher import Dispatcher
@@ -13,6 +16,7 @@ from capitalcom.domain.errors import (
     OutcomeUnknownError,
     RateLimitError,
     TransportError,
+    ValidationError,
 )
 from tests.fakes import EPOCH, FakeClock, FakeTransport, response
 
@@ -131,3 +135,38 @@ def test_error_for_maps_statuses() -> None:
 def test_error_for_tolerates_odd_bodies(body: bytes) -> None:
     error = error_for(response(400, body), EPOCH)
     assert error.error_code is None
+
+
+def test_retry_after_over_a_minute_is_returned_at_once() -> None:
+    dispatcher, transport, clock = make([response(429, headers={"Retry-After": "3600"})])
+    result = dispatcher.send(GET)
+    assert isinstance(result, Err)
+    assert isinstance(result.error, RateLimitError)
+    assert result.error.retry_after == 3600.0
+    assert clock.sleeps == []
+    assert len(transport.requests) == 1
+
+
+@pytest.mark.parametrize("method", ["POST", "DELETE"])
+def test_session_requests_are_retried_on_gateway_errors(method: str) -> None:
+    dispatcher, transport, _ = make([response(503), response(200, b"{}")])
+    assert isinstance(dispatcher.send(HttpRequest(method, "/api/v1/session")), Ok)
+    assert len(transport.requests) == 2
+
+
+def test_session_request_transport_error_is_retried() -> None:
+    dispatcher, transport, _ = make([TransportError("reset"), response(200, b"{}")])
+    assert isinstance(dispatcher.send(HttpRequest("POST", "/api/v1/session")), Ok)
+    assert len(transport.requests) == 2
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"size": Decimal("0.1234567890123456")}, {"when": datetime(2026, 1, 1, tzinfo=UTC)}],
+)
+def test_unencodable_body_is_validation_error_and_not_sent(body: dict[str, object]) -> None:
+    dispatcher, transport, _ = make([response(200, b"{}")])
+    result = dispatcher.send(HttpRequest("POST", "/api/v1/positions", json=body))
+    assert isinstance(result, Err)
+    assert isinstance(result.error, ValidationError)
+    assert transport.requests == []

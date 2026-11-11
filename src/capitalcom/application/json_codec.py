@@ -1,6 +1,7 @@
 """JSON encoding that never silently rounds a Decimal, and decoding that never makes floats."""
 
 import json
+import math
 from collections.abc import Mapping
 from decimal import Decimal
 from typing import Any
@@ -16,7 +17,10 @@ MAX_SIGNIFICANT_DIGITS = 15
 
 def encode_json(body: Mapping[str, Any]) -> bytes:
     """Serialize a request body, writing ``Decimal`` values as JSON numbers."""
-    return json.dumps(_plain(body, "")).encode("utf-8")
+    try:
+        return json.dumps(_plain(body, ""), allow_nan=False).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise ValidationError(f"request body is not JSON-serialisable: {error}") from None
 
 
 def _plain(value: Any, path: str) -> Any:  # noqa: ANN401 - walks arbitrary JSON values
@@ -37,7 +41,12 @@ def _decimal_to_float(value: Decimal, path: str) -> float:
             f"{path}: {value} has more than {MAX_SIGNIFICANT_DIGITS} significant digits "
             "and would be rounded by the server"
         )
-    return float(value)
+    number = float(value)
+    # Within 15 digits a double is exact only inside its normal range: 1E+400 would become
+    # inf and 1E-400 would become 0.0, both sent without complaint.
+    if not math.isfinite(number) or Decimal(repr(number)) != value:
+        raise ValidationError(f"{path}: {value} is outside the range a double holds exactly")
+    return number
 
 
 def _reject_constant(name: str) -> Decimal:

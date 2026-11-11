@@ -10,8 +10,9 @@ from capitalcom.application.logs import get_logger
 
 _log = get_logger(__name__)
 
-# A server asking for more than a minute is better surfaced as RateLimitError than obeyed by a
-# trading bot that silently freezes.
+# A server asking for more than a minute is surfaced as RateLimitError (by the Dispatcher)
+# rather than obeyed by a trading bot that would silently freeze; the cap in backoff_delay is
+# a second line of defence.
 MAX_RETRY_AFTER_S = 60.0
 
 
@@ -44,7 +45,9 @@ def parse_retry_after(value: str | None, now: datetime) -> float | None:
     if not value:
         return None
     text = value.strip()
-    if text.isdigit():
+    # isascii first: str.isdigit() also accepts digits such as superscript two that float()
+    # rejects.
+    if text.isascii() and text.isdigit():
         return float(text)
     try:
         when = parsedate_to_datetime(text)
@@ -57,10 +60,15 @@ def parse_retry_after(value: str | None, now: datetime) -> float | None:
     return max(0.0, seconds) if math.isfinite(seconds) else None
 
 
-def is_idempotent(method: str) -> bool:
-    """True when repeating the request cannot change state on the server.
+SESSION_PATH = "/api/v1/session"
 
-    Only GET: Capital.com's DELETE closes a position and PUT amends one, and a repeated close
-    after a lost response can hit a position reopened in the meantime.
+
+def is_retry_safe(method: str, path: str) -> bool:
+    """True when repeating the request after a lost answer cannot cause harm.
+
+    GET reads only. Login and logout (``/api/v1/session``) are safe too: a second login just
+    issues new tokens, and a second logout is answered 401, which logout treats as done.
+    Everything else is not: Capital.com's DELETE closes a position and PUT amends one, and a
+    repeat after a lost response can hit a position reopened in the meantime.
     """
-    return method.upper() == "GET"
+    return method.upper() == "GET" or path == SESSION_PATH

@@ -91,3 +91,9 @@ def test_forgotten_secret_is_no_longer_redacted(caplog: pytest.LogCaptureFixture
 def test_library_root_logger_has_null_handler() -> None:
     get_logger("capitalcom.z")
     assert any(isinstance(h, logging.NullHandler) for h in logging.getLogger("capitalcom").handlers)
+
+
+@pytest.mark.parametrize("value", ["1E+400", "1E-400"])
+def test_encode_json_rejects_decimal_outside_double_range(value: str) -> None:
+    with pytest.raises(ValidationError, match="level"):
+        encode_json({"level": Decimal(value)})

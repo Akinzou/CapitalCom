@@ -13,6 +13,7 @@ from capitalcom.domain.errors import (
     ConfirmationTimeoutError,
     DealRejectedError,
     NotFoundError,
+    OutcomeUnknownError,
     ResponseFormatError,
 )
 from capitalcom.domain.parsing import format_error
@@ -28,6 +29,17 @@ def _not_ready(error: CapitalComError) -> bool:
     return (
         isinstance(error, ApiError) and error.status == 400 and error.error_code == _NOT_READY_CODE
     )
+
+
+def _unknown(path: str, cause: CapitalComError) -> Err[CapitalComError]:
+    """The deal was submitted but polling failed, so its outcome is unknown.
+
+    Returning the raw cause would be wrong: a connect-timeout TransportError means "never
+    sent" for the poll, and a caller could read it as permission to resend the trade.
+    """
+    error = OutcomeUnknownError("GET", path)
+    error.__cause__ = cause
+    return Err(error)
 
 
 class DealConfirmer:
@@ -63,14 +75,14 @@ class DealConfirmer:
         """Return the final result, or ``None`` while the deal is still pending."""
         called = self._api.call("GET", path)
         if isinstance(called, Err):
-            return None if _not_ready(called.error) else called
+            return None if _not_ready(called.error) else _unknown(path, called.error)
         if not isinstance(called.value, Mapping):
-            return Err(format_error("confirms", "expected a JSON object"))
+            return _unknown(path, format_error("confirms", "expected a JSON object"))
         try:
             confirmation = DealConfirmation.from_api(called.value)
             outcome = confirmation.outcome
         except ResponseFormatError as error:
-            return Err(error)
+            return _unknown(path, error)
         if outcome is Outcome.ACCEPTED:
             return Ok(confirmation)
         if outcome is Outcome.REJECTED:

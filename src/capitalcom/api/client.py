@@ -60,7 +60,7 @@ class CapitalCom:
             return
         self._closed = True
         try:
-            result = self._core.session.logout()
+            result = self._core.session.close()
         finally:
             self._core.release()
         if isinstance(result, Err):

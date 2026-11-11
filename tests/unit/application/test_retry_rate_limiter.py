@@ -13,7 +13,7 @@ from capitalcom.application.rate_limiter import (
 from capitalcom.application.retry import (
     RetryPolicy,
     backoff_delay,
-    is_idempotent,
+    is_retry_safe,
     parse_retry_after,
 )
 from tests.fakes import EPOCH, FakeClock
@@ -33,7 +33,7 @@ def test_retry_after_http_date_in_past_is_zero() -> None:
     assert parse_retry_after(value, EPOCH) == 0.0
 
 
-@pytest.mark.parametrize("value", ["soon", None, "", "-5", "nan", "inf"])
+@pytest.mark.parametrize("value", ["soon", None, "", "-5", "nan", "inf", "²", "٣"])
 def test_retry_after_garbage_is_none(value: str | None) -> None:
     assert parse_retry_after(value, EPOCH) is None
 
@@ -53,9 +53,11 @@ def test_backoff_prefers_retry_after_capped_at_a_minute() -> None:
     assert backoff_delay(RetryPolicy(), 0, 3600.0, lambda: 0.0) == 60.0
 
 
-def test_only_get_is_idempotent() -> None:
-    assert is_idempotent("GET")
-    assert not any(is_idempotent(m) for m in ("POST", "PUT", "DELETE"))
+def test_only_reads_and_session_calls_are_retry_safe() -> None:
+    assert is_retry_safe("GET", "/api/v1/positions")
+    assert is_retry_safe("POST", "/api/v1/session")
+    assert is_retry_safe("DELETE", "/api/v1/session")
+    assert not any(is_retry_safe(m, "/api/v1/positions") for m in ("POST", "PUT", "DELETE"))
 
 
 def test_classify() -> None:

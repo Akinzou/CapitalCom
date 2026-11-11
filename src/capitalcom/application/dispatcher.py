@@ -4,12 +4,23 @@ import random
 from collections.abc import Callable
 
 from capitalcom.application.error_mapping import error_for
+from capitalcom.application.json_codec import encode_json
 from capitalcom.application.logs import get_logger
 from capitalcom.application.ports import Clock, HttpRequest, HttpResponse, HttpTransport
 from capitalcom.application.rate_limiter import RateLimiter
 from capitalcom.application.result import Err, Ok, Result
-from capitalcom.application.retry import RetryPolicy, backoff_delay, is_idempotent
-from capitalcom.domain.errors import CapitalComError, OutcomeUnknownError, RateLimitError
+from capitalcom.application.retry import (
+    MAX_RETRY_AFTER_S,
+    RetryPolicy,
+    backoff_delay,
+    is_retry_safe,
+)
+from capitalcom.domain.errors import (
+    CapitalComError,
+    OutcomeUnknownError,
+    RateLimitError,
+    ValidationError,
+)
 
 _log = get_logger(__name__)
 
@@ -37,7 +48,14 @@ class Dispatcher:
 
     def send(self, request: HttpRequest) -> Result[HttpResponse, CapitalComError]:
         """Send ``request``; ``Ok`` only for a 2xx response."""
-        idempotent = is_idempotent(request.method)
+        if request.json is not None:
+            # Encoding is checked before a rate-limit slot is spent, so a body the server would
+            # get rounded or could not parse fails locally and comes back as Err, not raised.
+            try:
+                encode_json(request.json)
+            except ValidationError as error:
+                return Err(error)
+        idempotent = is_retry_safe(request.method, request.path)
         last: Err[CapitalComError] = Err(CapitalComError("no attempt was made"))
         for attempt in range(self._policy.max_attempts):
             self._limiter.acquire(request.method, request.path)
@@ -45,6 +63,8 @@ class Dispatcher:
             if not isinstance(outcome, tuple):
                 return outcome
             last, retry_after = outcome
+            if retry_after is not None and retry_after > MAX_RETRY_AFTER_S:
+                return last
             if attempt + 1 < self._policy.max_attempts:
                 delay = backoff_delay(self._policy, attempt, retry_after, self._rand)
                 _log.info(

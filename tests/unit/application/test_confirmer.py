@@ -15,6 +15,7 @@ from capitalcom.domain.errors import (
     ApiError,
     ConfirmationTimeoutError,
     DealRejectedError,
+    OutcomeUnknownError,
 )
 from capitalcom.domain.secret import Secret
 from tests.fakes import FakeClock, FakeTransport, response
@@ -76,11 +77,14 @@ def test_never_ready_times_out_after_about_five_seconds() -> None:
     assert 4.9 <= clock.monotonic() <= 5.2
 
 
-def test_other_errors_return_at_once() -> None:
+def test_other_errors_return_at_once_as_outcome_unknown() -> None:
+    # The deal was already submitted: whatever stopped polling, its outcome is unknown, and a
+    # caller must not read a "never sent" transport error as permission to resend.
     confirmer, transport, clock = make([response(500, b'{"errorCode":"error.internal"}')])
     result = confirmer.confirm("o_1")
     assert isinstance(result, Err)
-    assert type(result.error) is ApiError
+    assert isinstance(result.error, OutcomeUnknownError)
+    assert type(result.error.__cause__) is ApiError
     assert clock.sleeps == []
     assert len(transport.requests) == 2
 
@@ -95,13 +99,16 @@ def test_unknown_deal_status_is_returned_not_polled() -> None:
     confirmer, _, clock = make([confirm_body("WEIRD")])
     result = confirmer.confirm("o_1")
     assert isinstance(result, Err)
-    assert "WEIRD" in str(result.error)
+    assert isinstance(result.error, OutcomeUnknownError)
+    assert "WEIRD" in str(result.error.__cause__)
     assert clock.sleeps == []
 
 
-def test_malformed_payload_is_returned() -> None:
+def test_malformed_payload_is_outcome_unknown() -> None:
     confirmer, _, _ = make([response(200, b"[1, 2]")])
-    assert isinstance(confirmer.confirm("o_1"), Err)
+    result = confirmer.confirm("o_1")
+    assert isinstance(result, Err)
+    assert isinstance(result.error, OutcomeUnknownError)
 
 
 def test_reference_is_escaped_as_one_path_segment() -> None:

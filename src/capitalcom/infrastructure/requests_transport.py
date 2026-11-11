@@ -8,8 +8,9 @@ from capitalcom.application.result import Err, Ok, Result
 from capitalcom.domain.errors import TransportError
 
 # Raised before any byte of the request reached the server, so even a trade is known not to
-# have executed.
-_NOT_SENT = (requests.exceptions.ConnectTimeout, requests.exceptions.SSLError)
+# have executed. SSLError is deliberately absent: requests raises it for a failed handshake but
+# also for TLS dropped while the response was read, after the trade may have been booked.
+_NOT_SENT = (requests.exceptions.ConnectTimeout,)
 
 
 class RequestsTransport:

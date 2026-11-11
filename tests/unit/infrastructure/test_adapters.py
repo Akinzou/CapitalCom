@@ -53,11 +53,13 @@ def test_connect_timeout_never_reached_server() -> None:
 
 
 @responses.activate
-def test_ssl_error_never_reached_server() -> None:
-    responses.get(f"{BASE}/api/v1/ping", body=requests.exceptions.SSLError("bad cert"))
-    result = RequestsTransport(BASE).send(HttpRequest("GET", "/api/v1/ping"))
+def test_ssl_error_may_have_reached_server() -> None:
+    # requests raises SSLError both for a failed handshake and for TLS dropped while the
+    # response was read; only the first is "never sent", and the two cannot be told apart.
+    responses.post(f"{BASE}/api/v1/positions", body=requests.exceptions.SSLError("eof"))
+    result = RequestsTransport(BASE).send(HttpRequest("POST", "/api/v1/positions"))
     assert isinstance(result, Err)
-    assert result.error.reached_server is False
+    assert result.error.reached_server is True
 
 
 @responses.activate
