@@ -9,7 +9,7 @@ import requests
 import responses
 
 from capitalcom.client import colored_log
-from tests.legacy.golden.conftest import (
+from tests.legacy.conftest import (
     API_KEY,
     DEMO,
     IDENTIFIER,
@@ -28,7 +28,12 @@ def test_constructor_logs_in_eagerly(api: responses.RequestsMock) -> None:
     assert logins(api) == 1
     login = api.calls[0].request
     assert login.headers["X-CAP-API-KEY"] == API_KEY
-    assert json.loads(login.body or "") == {"identifier": IDENTIFIER, "password": PASSWORD}
+    body = json.loads(login.body or "")
+    # 2.x also sends the documented "encryptedPassword": false; 1.0.4 left the default implicit.
+    assert {k: body[k] for k in ("identifier", "password")} == {
+        "identifier": IDENTIFIER,
+        "password": PASSWORD,
+    }
 
 
 def test_login_failure_raises(api: responses.RequestsMock) -> None:
@@ -48,7 +53,11 @@ def test_attributes_mirror_the_session(api: responses.RequestsMock) -> None:
 
 def test_live_flag_selects_the_live_host() -> None:
     with responses.RequestsMock() as mock:
-        mock.post(f"{LIVE}/api/v1/session", json={}, headers={"CST": "c", "X-SECURITY-TOKEN": "t"})
+        mock.post(
+            f"{LIVE}/api/v1/session",
+            json={},
+            headers={"CST": "cst-live", "X-SECURITY-TOKEN": "tok-live"},
+        )
         assert legacy(demo=False).base_url == LIVE
 
 
@@ -103,9 +112,11 @@ def test_request_passes_params_and_json(api: responses.RequestsMock) -> None:
 
 def test_login_session_renews_tokens(api: responses.RequestsMock) -> None:
     client = legacy()
-    api.replace(responses.POST, LOGIN, json={}, headers={"CST": "cst-2", "X-SECURITY-TOKEN": "t2"})
+    api.replace(
+        responses.POST, LOGIN, json={}, headers={"CST": "cst-2", "X-SECURITY-TOKEN": "tok-2"}
+    )
     client.login_session()
-    assert (client.cst, client.security_token) == ("cst-2", "t2")
+    assert (client.cst, client.security_token) == ("cst-2", "tok-2")
 
 
 def test_session_settings_reach_requests(api: responses.RequestsMock) -> None:

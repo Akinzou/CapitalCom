@@ -1,4 +1,5 @@
-"""Fixtures of the golden suite: the 1.0.4 contract, replayed against recorded HTTP shapes.
+"""Fixtures of the legacy tests and of the golden suite, which replays the 1.0.4 contract
+against recorded HTTP shapes.
 
 The suite was first run against the untouched 1.0.4 module, so a passing test here describes
 what 1.0.4 really did, not what we believed it did.

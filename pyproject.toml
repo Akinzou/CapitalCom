@@ -52,6 +52,9 @@ packages = ["src/capitalcom"]
 testpaths = ["tests"]
 addopts = "-m 'not contract' --strict-markers"
 markers = ["contract: hits the real Capital.com demo API"]
+# The legacy suite calls CapitalClient on purpose; tests that check the warning use
+# pytest.warns, which records it regardless of this filter.
+filterwarnings = ["ignore:CapitalClient:DeprecationWarning"]
 
 [tool.ruff]
 target-version = "py311"

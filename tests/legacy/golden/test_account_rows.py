@@ -5,7 +5,7 @@ import logging
 import pytest
 import responses
 
-from tests.legacy.golden.conftest import DEMO, legacy, sent
+from tests.legacy.conftest import DEMO, legacy, sent
 from tests.legacy.golden.payloads import account, position_row
 
 ACCOUNTS = f"{DEMO}/api/v1/accounts"

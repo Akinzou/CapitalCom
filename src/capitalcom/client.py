@@ -1,103 +1,91 @@
-import requests
-import time
-import logging
-import random
+"""1.x API: ``CapitalClient``, kept working on top of the 2.x core until 3.0.
 
-# ANSI color codes for terminal coloring
+New code should use ``capitalcom.CapitalCom``. Every name here emits one ``DeprecationWarning``
+per process; the migration guide maps each call to its 2.x equivalent.
+"""
+
+import logging
+import time
+from typing import Any
+
+import requests
+
+from capitalcom.application.logs import get_logger
+from capitalcom.legacy.attributes import LegacyAttributes
+from capitalcom.legacy.deprecation import warn_once
+from capitalcom.legacy.raw_request import send_raw
+from capitalcom.legacy.wiring import legacy_core
+
+# 1.0.4 code doing "from capitalcom import *" got these six names (and, by accident, the
+# requests, time, logging and random modules, which are no longer re-exported).
+__all__ = ["BLUE", "GREEN", "RED", "RESET", "CapitalClient", "colored_log"]
+
+# Kept importable with their 1.0.4 values; the library no longer writes them into log lines,
+# where they ended up as escape garbage in files and log collectors.
 RESET = "\033[0m"
 GREEN = "\033[92m"
 RED = "\033[91m"
 BLUE = "\033[94m"
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
-)
+_log = get_logger(__name__)
 
-def colored_log(level, text):
-    color = {
-        'INFO': GREEN,
-        'ERROR': RED,
-        'DEBUG': BLUE,
-        'WARNING': RED
-    }.get(level, '')
-    logging.log(getattr(logging, level), f"{color}{text}{RESET}")
 
-class CapitalClient:
-    def __init__(self, api_key, login, password, demo=True):
-        self.api_key = api_key
-        self.login = login
-        self.password = password
-        self.base_url = 'https://demo-api-capital.backend-capital.com' if demo else 'https://api-capital.backend-capital.com'
-        self.session = requests.Session()
-        self.cst = None
-        self.security_token = None
-        self.token_expiry = 0
-        self.login_session()
+def colored_log(level: str, text: str) -> None:
+    """Log ``text`` at ``level`` (a level name such as ``"INFO"``) under ``capitalcom.client``.
 
-    def login_session(self):
-        url = f'{self.base_url}/api/v1/session'
-        headers = {
-            'Content-Type': 'application/json',
-            'X-CAP-API-KEY': self.api_key
-        }
-        payload = {
-            'identifier': self.login,
-            'password': self.password
-        }
+    Unlike 1.0.4 it neither colours the text nor configures the root logger: the application
+    decides where library logs go.
+    """
+    _log.log(logging.getLevelNamesMapping()[level], text)
 
-        response = self.session.post(url, json=payload, headers=headers)
-        if response.status_code == 200:
-            self.cst = response.headers['CST']
-            self.security_token = response.headers['X-SECURITY-TOKEN']
-            self.token_expiry = time.time() + 600
-            colored_log("INFO", "Session opened successfully.")
-        else:
-            colored_log("ERROR", f"Login failed: {response.status_code} {response.text}")
-            raise Exception(f"Login failed: {response.status_code} {response.text}")
 
-    def _headers(self):
-        return {
-            'CST': self.cst,
-            'X-SECURITY-TOKEN': self.security_token
-        }
+class CapitalClient(LegacyAttributes):
+    """Deprecated 1.x client; use ``capitalcom.CapitalCom``.
 
-    def _request(self, method, path, **kwargs):
-        """
-        Make an authenticated API request.
-        Handles token expiry (401) and rate limiting (429) with retry and fixed backoff.
-        """
-        max_retries = 10
-        rate_limit_wait = 1.0  # wait time (in seconds) on 429
+    It logs in when constructed. Its 1.0.4 attributes live in ``LegacyAttributes``.
+    """
 
-        for attempt in range(max_retries):
-            if time.time() > self.token_expiry:
-                colored_log("DEBUG", "Session expired. Renewing...")
-                self.login_session()
+    def __init__(self, api_key: str, login: str, password: str, demo: bool = True) -> None:
+        warn_once("CapitalClient")
+        self._api_key = api_key
+        self._login = login
+        self._password = password
+        self._session = requests.Session()
+        self._core = legacy_core(api_key, login, password, demo, self._session)
+        self._base_url = self._core.environment.rest_url
+        self._log_in()
 
-            url = f"{self.base_url}{path}"
-            headers = kwargs.pop('headers', {})
-            headers.update(self._headers())
+    def __repr__(self) -> str:
+        # The login is an e-mail address and the other two are secrets.
+        return f"CapitalClient(base_url={self._base_url!r})"
 
-            response = self.session.request(method, url, headers=headers, **kwargs)
+    def login_session(self) -> None:
+        """Log in again, replacing the current session tokens."""
+        warn_once("CapitalClient.login_session")
+        self._log_in()
 
-            # Retry once if unauthorized (session expired)
-            if response.status_code == 401 and attempt == 0:
-                colored_log("DEBUG", "Token invalid. Retrying request after re-authentication...")
-                self.login_session()
-                continue
+    def _log_in(self) -> None:
+        self._core.session.adopt_tokens(None, None)
+        try:
+            self._core.session.tokens().unwrap()
+        except Exception as error:
+            colored_log("ERROR", f"Login failed: {error}")
+            raise
+        colored_log("INFO", "Session opened successfully.")
 
-            # Retry with fixed delay on rate limiting
-            if response.status_code == 429:
-                colored_log("WARNING",
-                            f"Rate limited (429). Waiting {rate_limit_wait:.1f}s before retrying... ({attempt + 1}/{max_retries})")
-                time.sleep(rate_limit_wait)
-                continue
+    def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:
+        """Authenticated request returning the raw response, whatever its status."""
+        return send_raw(self._core, self._session, self._base_url, method, path, kwargs)
 
-            return response
+    def lot_to_size(self, lot: float, lot_size: float) -> float:
+        """``lot * lot_size``."""
+        warn_once("CapitalClient.lot_to_size")
+        return lot * lot_size
 
-        raise Exception(f"Request failed after {max_retries} retries: {method} {path}")
+    def pips_to_profit_distance(self, pips: float | None, pip_position: int) -> float | None:
+        """``pips * 10 ** -pip_position``; ``None`` for a falsy ``pips``."""
+        warn_once("CapitalClient.pips_to_profit_distance")
+        return pips * 10 ** (-pip_position) if pips else None
 
     def get_deal_by_ref(self, deal_reference, retries=10, delay=0.1):
         """
@@ -202,11 +190,6 @@ class CapitalClient:
         deal_id = self.get_deal_by_ref(deal_reference)
         return self.close_position_by_id(deal_id, size=size)
 
-    def lot_to_size(self, lot, lot_size):
-        return lot * lot_size
-
-    def pips_to_profit_distance(self, pips, pip_position):
-        return pips * 10 ** (-pip_position) if pips else None
 
     def get_balance(self, account_id=None, raw=False):
         resp = self._request("GET", "/api/v1/accounts")
