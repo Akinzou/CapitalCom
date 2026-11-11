@@ -62,7 +62,7 @@
 - Produces:
   - `Core(dispatcher, session: SessionManager, api: ApiClient, confirmer: DealConfirmer)`, a frozen dataclass.
   - `build_core(credentials: Credentials, environment: Environment, *, http_session: requests.Session | None = None, timeout=(5.0, 15.0), retry: RetryPolicy | None = None, confirm_timeout_s: float = 5.0, clock: Clock | None = None, transport: HttpTransport | None = None) -> Core`.
-  - `CapitalCom(api_key: str, identifier: str, password: str, environment: Environment = Environment.DEMO, *, session: requests.Session | None = None, timeout=(5.0, 15.0), retry: RetryPolicy | None = None, confirm_timeout: float = 5.0)`:
+  - `CapitalCom(api_key: str, identifier: str, password: str, environment: Environment = Environment.DEMO, *, http_session: requests.Session | None = None, timeout=(5.0, 15.0), retry: RetryPolicy | None = None, confirm_timeout: float = 5.0)`:
     - An empty `api_key`, `identifier` or `password` raises `ValueError`.
     - `repr` is `CapitalCom(environment=Environment.DEMO)`; no identifier, because it is the user's e-mail.
     - `.session -> SessionResource`, with `ping() -> None` (`GET /api/v1/ping`) and `logout() -> None`.
@@ -109,7 +109,8 @@
 - [ ] **Step 2: Write the confirmation contract tests.**
   - Open a position with min size BUY. `confirm()` gives `ACCEPTED`, `deal_id` is set, and `affected_deals` is non-empty.
   - `abs(conf.date - now_utc) < 5 min`. This pins the UTC assumption from Task 2.
-  - `GET /api/v1/confirms/o_doesnotexist` gives `NotFoundError`. This pins the pending behaviour the confirmer relies on.
+  - `GET /api/v1/confirms/o_doesnotexist`: record the observed status and `errorCode` and assert them. This pins the pending signals the confirmer relies on (404, or 400 `error.invalid.dealReference`).
+  - Pin whether `deal_id == affected_deals[0].deal_id`. Stage 3 legacy returns the latter.
   - Closing through `DELETE /api/v1/positions/{dealId}` and then confirming gives `ACCEPTED`.
 - [ ] **Step 3: Write the partial-close probe**, `test_legacy_partial_close_endpoint_closes_only_part`.
   - Open size `2 × minDealSize`.

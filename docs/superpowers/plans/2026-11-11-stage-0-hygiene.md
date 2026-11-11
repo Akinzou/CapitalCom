@@ -38,6 +38,7 @@
 - Modify: `pyproject.toml`
 - Delete: `requirements.txt` (after grep: `pyproject.toml` becomes the single source of dependencies)
 - Create: `tests/__init__.py` (empty), `tests/legacy/test_smoke.py`, `docs/adr/0001-record-architecture-decisions.md`
+- Modify: `.gitignore`: keep the existing private-rules line and add the standard Python ignores (`__pycache__/`, `*.py[cod]`, `.venv/`, `dist/`, `build/`, `*.egg-info/`, `.coverage`, `htmlcov/`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`). Without them the file-length check, which also scans untracked files, trips over build artefacts.
 - Create: `.gitattributes` with `* text=auto eol=lf`. The owner works on Windows and CI runs on Linux; without it, line endings flip and file-length and format checks give different results on the two systems.
 
 **Interfaces:**
@@ -46,21 +47,21 @@
 - [ ] **Step 1: Write the failing smoke tests** in `tests/legacy/test_smoke.py`:
 
 ```python
-def test_root_import_exposes_legacy_client():
+def test_root_import_exposes_legacy_client() -> None:
     from capitalcom import CapitalClient
     assert CapitalClient.__module__ == "capitalcom.client"
 
-def test_legacy_module_names_importable():
+def test_legacy_module_names_importable() -> None:
     from capitalcom.client import BLUE, GREEN, RED, RESET, CapitalClient, colored_log  # noqa: F401
 
-def test_lot_to_size_unchanged():
+def test_lot_to_size_unchanged() -> None:
     from capitalcom.client import CapitalClient
     client = CapitalClient.__new__(CapitalClient)  # skip eager login
     assert client.lot_to_size(2, 100000) == 200000
     assert client.pips_to_profit_distance(15, 4) == 15 * 10 ** -4
     assert client.pips_to_profit_distance(0, 4) is None
 
-def test_version_is_v2_dev():
+def test_version_is_v2_dev() -> None:
     from importlib.metadata import version
     assert version("capitalcom") == "2.0.0.dev0"
 ```
@@ -134,7 +135,7 @@ def test_version_is_v2_dev():
 - [ ] **Step 1: Write `LICENSE`.**
   - Download the text verbatim from `https://raw.githubusercontent.com/polyformproject/polyform-licenses/1.0.0/PolyForm-Noncommercial-1.0.0.md`.
   - Verify `sha256 = c0ea4a896d2c8c394b29f9427589996db826cd501c512279ff0ed3ef48fabbe5` before editing.
-  - Append `Required Notice: Copyright (c) 2024-2026 Wiktor Jelen (https://github.com/Akinzou/CapitalCom)`.
+  - Append `Required Notice: Copyright (c) 2025-2026 Wiktor Jelen (https://github.com/Akinzou/CapitalCom)`.
 - [ ] **Step 2: Write `LICENSE-ADDITIONAL-PERMISSION`.**
   - It grants a natural person the right to use the software to trade their own personal accounts, demo or live, including for profit.
   - It excludes use on behalf of others, inside a business, and in any distributed or hosted product.
@@ -159,7 +160,7 @@ def test_version_is_v2_dev():
 - Delete: `.github/workflows/python-publish.yml` (grep the README badge first and point it to `ci.yml`)
 
 - [ ] **Step 1: Write `ci.yml`.**
-  - Trigger on `pull_request` and on `push` to `master`. Set `permissions: contents: read`. Use no secrets.
+  - Trigger on `pull_request` and on `push` to `master`. Set `permissions: contents: read`. Use no secrets. Each job runs `python -m pip install --upgrade pip` before `pip install -e . --group dev`, because `--group` needs pip ≥25.1.
   - Jobs:
     - `lint`: `ruff check`, then `ruff format --check`.
     - `types`: `mypy`.

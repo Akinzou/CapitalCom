@@ -81,7 +81,7 @@
 - The `reason` field reads `payload.get("reason") or payload.get("rejectReason")`. This is an assumption; the rejection shape is undocumented, and 1b pins it.
 - `DealConfirmation.outcome -> Outcome`. The rules:
   - `deal_status` of `"ACCEPTED"` with a `deal_id` gives `ACCEPTED`.
-  - `"ACCEPTED"` without a `deal_id` gives `PENDING`. Version 1.0.4 already saw incomplete confirms.
+  - `"ACCEPTED"` with neither a `deal_id` nor any `affected_deals` gives `PENDING`. Version 1.0.4 already saw incomplete confirms. Note that 1.0.4 returned `affectedDeals[0].dealId`, not the top-level `dealId`.
   - `None` gives `PENDING`.
   - `"REJECTED"` gives `REJECTED`.
   - Any other value raises `ResponseFormatError`, naming the value. Nothing is defaulted silently.
@@ -109,7 +109,7 @@
 **Files:** Create `src/capitalcom/application/{__init__,result,ports,json_codec}.py`, `tests/fakes.py`, and `tests/unit/application/test_result_ports_codec.py`.
 
 **Interfaces (Produces):**
-- `Ok[T](value)` and `Err[E: CapitalComError](error)` are frozen dataclasses. `Result = Union[Ok[T], Err[E]]`.
+- `Ok[T](value)` and `Err[E](error)` are frozen dataclasses. Use `E = TypeVar("E", bound=CapitalComError)`; 3.12-only syntax is not allowed. `Result = Union[Ok[T], Err[E]]`.
 - `Ok.unwrap() -> T`. `Err.unwrap() -> NoReturn` raises `error`. The facade is the only caller of `unwrap`.
 - `HttpRequest(method: str, path: str, headers: Mapping[str, str] = {}, params: Mapping[str, str] = {}, json: Mapping[str, Any] | None = None)`. Its `__repr__` shows only the method and path.
 - `HttpResponse(status: int, headers: Mapping[str, str], body: bytes)`:
@@ -184,6 +184,7 @@
   - A 2xx returns `Ok`.
   - A 429 is retried after `backoff_delay` until `max_attempts`, then returns `Err(RateLimitError)`.
   - A transport error on `GET`, or a 502/503/504 on `GET`, is retried with backoff.
+  - A 5xx on a non-`GET` request gives `Err(OutcomeUnknownError(method, path))`, with no retry. A gateway error after the request was sent leaves the trade outcome unknown, exactly like a read timeout.
   - A transport error on a non-`GET` request is never retried:
     - `reached_server=False` gives `Err(TransportError)`;
     - anything else gives `Err(OutcomeUnknownError(method, path))`.
@@ -193,6 +194,7 @@
   - 429 (`Retry-After: 2`), then 200: the result is `Ok` and `clock.sleeps` contains `2.0`.
   - Three 429s: `Err(RateLimitError)`.
   - POST with `TransportError(reached_server=True)`: `Err(OutcomeUnknownError)`, and the transport saw exactly one request.
+  - POST answered with 504: `Err(OutcomeUnknownError)`, one request.
   - GET with a transport error, then 200: `Ok`.
   - 502 with an HTML body of 2000 characters: `ApiError`, `error_code is None`, body length ≤ 500.
   - 401 with `{"errorCode":"error.invalid.api.key"}`: `AuthenticationError` with that code.
@@ -207,7 +209,7 @@
 - `logs.get_logger(name) -> Logger` returns a child of `capitalcom` with the shared `RedactionFilter` attached.
   - We attach the filter to every child because logger filters are not inherited by child loggers.
   - `get_logger` also attaches one `NullHandler` to `capitalcom`.
-- `logs.register_secret(value: str) -> None` is called for the API key, the password, and every issued token.
+- `logs.register_secret(value: str) -> None` is called for the API key, the password, and every issued token. `logs.forget_secret(value: str) -> None` drops a token when it is replaced, so a bot that logs in again every 10 minutes does not grow the registry without limit.
 - The filter replaces those values with `***` in `record.msg` and in `record.args`.
 - Test: a token logged through `get_logger("capitalcom.x").warning("t=%s", tok)` shows up in `caplog` as `t=***`.
 
@@ -249,14 +251,17 @@
 - Consumes: `ApiClient.call`, `Clock`, `DealConfirmation`.
 - Produces `DealConfirmer(api: ApiClient, clock: Clock, timeout_s: float = 5.0, interval_s: float = 0.1)`, with `confirm(deal_reference: str) -> Result[DealConfirmation, CapitalComError]`:
   - It polls `GET /api/v1/confirms/{path_segment(ref)}`.
-  - A `NotFoundError` or the `PENDING` outcome means sleep `interval_s` and try again.
+  - These mean pending: sleep `interval_s` and try again:
+    - a `NotFoundError`;
+    - an `ApiError` with status 400 and `error_code == "error.invalid.dealReference"` (1.0.4 saw this while a confirm was not ready);
+    - the `PENDING` outcome.
   - `ACCEPTED` returns `Ok`.
   - `REJECTED` returns `Err(DealRejectedError(ref, reason))`.
   - Any other error is returned at once.
   - When the deadline passes it returns `Err(ConfirmationTimeoutError(ref))`.
 
 - [ ] **Step 1: Write the failing tests.**
-  - 404, 404, then accepted: `Ok`, and `sleeps == [0.1, 0.1]`.
+  - 404, 400 `error.invalid.dealReference`, then accepted: `Ok`, and `sleeps == [0.1, 0.1]`.
   - Rejected with a reason: `DealRejectedError` with that reason.
   - Always 404: `ConfirmationTimeoutError` after about 5 s of fake time.
   - A 500: an immediate `Err(ApiError)`.
