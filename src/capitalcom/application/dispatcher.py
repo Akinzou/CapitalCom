@@ -73,6 +73,10 @@ class Dispatcher:
                 self._clock.sleep(delay)
         return last
 
+    def throttle(self, method: str, path: str) -> None:
+        """Wait for a rate-limit slot, for a request sent without ``send``."""
+        self._limiter.acquire(method, path)
+
     def _attempt(
         self, request: HttpRequest, idempotent: bool
     ) -> Result[HttpResponse, CapitalComError] | tuple[Err[CapitalComError], float | None]:

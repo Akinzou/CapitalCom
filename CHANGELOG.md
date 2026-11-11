@@ -10,14 +10,16 @@ All notable changes to this project are documented in this file. The format foll
 
 - **`CapitalCom`, the 2.x client** (`from capitalcom import CapitalCom`). It logs in lazily,
   renews the session before Capital.com's 10-minute idle timeout, and logs out on `close()` or
-  at the end of a `with` block. This release exposes `cc.session.ping()` and
-  `cc.session.logout()`; trading and market resources follow.
+  at the end of a `with` block. Namespaces: `session`, `accounts`, `history`, `positions`,
+  `orders`, `markets`, `prices`, `sentiment` and `watchlists`.
+- **Migration guide** in `docs/migration.md`, mapping every 1.x call to its 2.x equivalent.
 - **Typed errors.** Every error derives from `CapitalComError` (and from `Exception`).
   Server refusals are `ApiError` subclasses that carry `status` and `error_code`. A trade
   whose outcome is unknown after a timeout raises `OutcomeUnknownError` instead of being
   retried.
 - **Safe transport.** Every request has connect and read timeouts. TLS verification cannot be
-  switched off, redirects are not followed, and requests are throttled to Capital.com's
+  switched off (a CA bundle path set on an injected session is honoured, for TLS-inspecting
+  proxies), redirects are not followed, and requests are throttled to Capital.com's
   published limits. `429` responses are retried with backoff and `Retry-After`.
 - **Precise numbers.** Prices, sizes and amounts are `Decimal`, and timestamps are aware UTC
   `datetime` values.
@@ -33,3 +35,53 @@ All notable changes to this project are documented in this file. The format foll
 - **Python support.** Python 3.11 or newer is required. Python 3.8–3.10 are no longer
   supported.
 - **Dependencies.** `requests>=2.32.4` is required.
+
+### Deprecated
+
+- **`CapitalClient`, the 1.x API.** It keeps its 1.0.4 signatures and return values and runs
+  on the 2.x core. Each of its names emits one `DeprecationWarning` per process. It will be
+  removed no earlier than 3.0.
+
+### Changed in `CapitalClient` (deliberately; ADR 0011)
+
+1. **Logging.** Importing the library no longer calls `logging.basicConfig`, and log
+   messages carry no ANSI colour codes. `colored_log` logs under `capitalcom.client`.
+2. **Closing.**
+   - A full close uses the documented `DELETE /positions/{dealId}` and waits for the
+     confirmation. A rejected close now raises instead of returning `"SUCCESS"`.
+   - `close_position_by_id` and `close_position_by_ref` with a non-zero `size` raise
+     `ValidationError` before sending anything: Capital.com closes the whole position
+     whatever size is sent.
+   - `size=0` still closes the whole position.
+3. **Typed errors.** Errors are subclasses of `CapitalComError`, which derives from
+   `Exception`, instead of bare `Exception`. Examples are `AuthenticationError`, `ApiError`
+   and `NotFoundError`; "No accounts found." is a `CapitalComError`. Network failures are
+   `TransportError`s that are also `requests.exceptions.ConnectionError`, so existing
+   `except requests.exceptions.ConnectionError` and `except RequestException` clauses still
+   catch them; a trade whose outcome is unknown is not one of them (change 5).
+4. **Rejected opens raise.** A rejected open raises `DealRejectedError`. 1.0.4 returned a
+   dealId as if the trade had succeeded.
+5. **Timeouts.**
+   - Every request has a timeout.
+   - A trade request that times out raises `OutcomeUnknownError` and is never resent.
+   - In 1.0.4 such a call could hang forever.
+6. **`test_trade` closes its position by id.** 1.0.4 looked the dealId up as a deal
+   reference, which could leave the test position open.
+7. **Read-only names.**
+   - `api_key`, `login`, `password`, `session` and `base_url` are read-only, and assigning
+     one raises `AttributeError`.
+   - `cst`, `security_token` and `token_expiry` still accept assignment.
+8. **`_request`.** It always verifies TLS and never follows redirects: `verify=False` or
+   `allow_redirects=True` raises `ValidationError`, while `verify=<CA bundle path>` and a
+   path set on `client.session.verify` still work. A path that does not start with a single
+   `/` raises too, so the session tokens cannot be sent to another host.
+9. **Narrower exports.** `from capitalcom import *` no longer re-exports the `requests`,
+   `time`, `logging` and `random` modules.
+10. **Top-up result.** `top_up_demo` raises `ApiError` when the server answers
+    `"successful": false`.
+11. **Opens that open nothing.** An open that nets against an existing position raises
+    `CapitalComError` saying no position was opened. 1.0.4 also raised, after its retries.
+    A size the server rounded is logged as a warning.
+12. **Overriding is narrower.** The public methods still call each other through `self`, as in
+    1.0.4. Overriding `_request` or `login_session` in a subclass no longer changes how they
+    reach the server, and the constructor no longer calls `login_session`.

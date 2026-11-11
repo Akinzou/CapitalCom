@@ -6,7 +6,7 @@ import pytest
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.error_mapping import error_for
 from capitalcom.application.ports import HttpRequest, HttpResponse
-from capitalcom.application.rate_limiter import RateLimiter
+from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
 from capitalcom.application.result import Err, Ok
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.domain.errors import (
@@ -170,3 +170,16 @@ def test_unencodable_body_is_validation_error_and_not_sent(body: dict[str, objec
     assert isinstance(result, Err)
     assert isinstance(result.error, ValidationError)
     assert transport.requests == []
+
+
+def test_throttle_waits_like_send() -> None:
+    clock = FakeClock()
+    buckets = {kind: TokenBucket(1.0, 1) for kind in RequestKind}
+    dispatcher = Dispatcher(
+        FakeTransport([]), clock, RateLimiter(clock, buckets), RetryPolicy(), rand=lambda: 0.0
+    )
+    dispatcher.throttle("GET", "/api/v1/accounts")
+    assert clock.sleeps == []
+    dispatcher.throttle("GET", "/api/v1/accounts")
+    assert clock.sleeps
+    assert clock.sleeps[-1] > 0

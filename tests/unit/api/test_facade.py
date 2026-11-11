@@ -173,3 +173,16 @@ def test_use_after_close_raises_and_does_not_log_in(api: responses.RequestsMock)
     with pytest.raises(CapitalComError, match="closed"):
         cc.session.ping()
     assert calls(api).count(("POST", "/api/v1/session")) == 1
+
+
+def test_core_exposes_its_clock() -> None:
+    from capitalcom.api.composition import build_core
+    from capitalcom.application.session import Credentials
+    from capitalcom.domain.enums import Environment
+    from capitalcom.domain.secret import Secret
+    from tests.fakes import FakeClock, FakeTransport
+
+    clock = FakeClock()
+    credentials = Credentials(Secret("clk-key-0001"), "me@example.com", Secret("clk-pw-0001"))
+    core = build_core(credentials, Environment.DEMO, clock=clock, transport=FakeTransport([]))
+    assert core.clock is clock

@@ -60,19 +60,17 @@ class DealConfirmer:
         "fail without looking".
         """
         deadline = self._clock.monotonic() + self._timeout_s
-        path = f"/api/v1/confirms/{path_segment(deal_reference)}"
         while True:
-            outcome = self._check(path, deal_reference)
+            outcome = self.poll(deal_reference)
             if outcome is not None:
                 return outcome
             if self._clock.monotonic() + self._interval_s > deadline:
                 return Err(ConfirmationTimeoutError(deal_reference))
             self._clock.sleep(self._interval_s)
 
-    def _check(
-        self, path: str, deal_reference: str
-    ) -> Result[DealConfirmation, CapitalComError] | None:
-        """Return the final result, or ``None`` while the deal is still pending."""
+    def poll(self, deal_reference: str) -> Result[DealConfirmation, CapitalComError] | None:
+        """Ask once; return the final result, or ``None`` while the deal is still pending."""
+        path = f"/api/v1/confirms/{path_segment(deal_reference)}"
         called = self._api.call("GET", path)
         if isinstance(called, Err):
             return None if _not_ready(called.error) else _unknown(path, called.error)

@@ -112,6 +112,28 @@ class SessionManager:
                 switched = self._login(account_id)
             return switched if isinstance(switched, Err) else Ok(None)
 
+    def current_tokens(self) -> SessionTokens | None:
+        """The live tokens, or ``None`` when there is no session; never logs in."""
+        with self._lock:
+            return self._tokens
+
+    def adopt_tokens(self, cst: str | None, security_token: str | None) -> None:
+        """Use a token pair obtained elsewhere; an empty or ``None`` half drops the session.
+
+        The account of adopted tokens is unknown, so ``current_account_id`` becomes ``None``.
+        """
+        with self._lock:
+            self._drop()
+            if cst and security_token:
+                self._adopt(cst, security_token)
+
+    def idle_remaining_s(self) -> float | None:
+        """Seconds until the server's idle timeout ends the session; ``None`` without one."""
+        with self._lock:
+            if self._tokens is None:
+                return None
+            return IDLE_TIMEOUT_S - (self._clock.monotonic() - self._last_used)
+
     def mark_used(self) -> None:
         """Record that the session served a request, which restarts the server's idle timer."""
         with self._lock:

@@ -126,3 +126,15 @@ def test_non_positive_timeout_still_checks_once(timeout: float) -> None:
     confirmer, transport, _ = make([confirm_body("ACCEPTED", dealId="d_1")], timeout)
     assert isinstance(confirmer.confirm("o_1"), Ok)
     assert len(transport.requests) == 2
+
+
+def test_poll_returns_none_while_pending() -> None:
+    confirmer, transport, _ = make(
+        [NOT_READY, confirm_body(None), confirm_body("ACCEPTED", dealId="D1")]
+    )
+    assert confirmer.poll("o_1") is None
+    assert confirmer.poll("o_1") is None
+    polled = confirmer.poll("o_1")
+    assert isinstance(polled, Ok)
+    assert polled.value.deal_id == "D1"
+    assert transport.requests[-1].path == "/api/v1/confirms/o_1"
