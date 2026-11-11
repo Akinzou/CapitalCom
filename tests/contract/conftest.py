@@ -28,7 +28,10 @@ SECRET_NAMES = ("CAPITAL_API_KEY", "CAPITAL_IDENTIFIER", "CAPITAL_PASSWORD")
 log = logging.getLogger("contract")
 
 
-@pytest.fixture
+# One client for the whole run, as a bot would use: its rate limiter then spaces every login,
+# whereas a client per test let back-to-back logins from different tests hit the server's
+# session limit (429 error.too-many.requests, observed 2026-11-11).
+@pytest.fixture(scope="session")
 def demo_core() -> Iterator[Core]:
     assert Environment.DEMO.rest_url == DEMO_URL
     values = [os.environ.get(name, "") for name in SECRET_NAMES]

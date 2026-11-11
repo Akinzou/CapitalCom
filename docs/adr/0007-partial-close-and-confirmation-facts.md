@@ -36,6 +36,7 @@ them. Below is what the first run on 2026-11-11 observed.
 
 - The probes run nightly. When Capital.com changes one of these behaviours, the nightly
   contract run fails and this ADR must be revisited.
-- Each test builds its own client, and each client has its own rate limiter. Back-to-back
-  tests can therefore exceed the one-login-per-second limit; the server's 429 is retried by
-  the dispatcher, as the first run showed.
+- Logins from separate clients are not spaced by any one rate limiter. When contract tests built
+  a client per test, back-to-back logins drew 429 `error.too-many.requests` often enough to
+  exhaust the default retries, so the contract tests now share one client for the whole run.
+  An application running several clients against one account should expect the same.
