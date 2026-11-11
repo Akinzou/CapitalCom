@@ -8,6 +8,7 @@ from capitalcom.api.accounts import AccountsResource
 from capitalcom.api.composition import Core, build_core
 from capitalcom.api.history import HistoryResource
 from capitalcom.api.markets import MarketsResource
+from capitalcom.api.positions import PositionsResource
 from capitalcom.api.prices import PricesResource
 from capitalcom.api.sentiment import SentimentResource
 from capitalcom.api.session_resource import SessionResource
@@ -59,6 +60,7 @@ class CapitalCom:
         self.session = SessionResource(self._core)
         self.accounts = AccountsResource(self._core)
         self.history = HistoryResource(self._core)
+        self.positions = PositionsResource(self._core)
         self.markets = MarketsResource(self._core)
         self.prices = PricesResource(self._core)
         self.sentiment = SentimentResource(self._core)
