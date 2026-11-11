@@ -5,8 +5,13 @@ from typing import Any
 
 from capitalcom.api.composition import Core
 from capitalcom.application.logs import get_logger
+from capitalcom.application.result import Err
 from capitalcom.domain.confirmation import DealConfirmation
-from capitalcom.domain.errors import CapitalComError, ConfirmationTimeoutError
+from capitalcom.domain.errors import (
+    CapitalComError,
+    ConfirmationTimeoutError,
+    OutcomeUnknownError,
+)
 
 _log = get_logger(__name__)
 
@@ -59,6 +64,12 @@ def resolve_deal_id(core: Core, deal_reference: str, retries: int, delay: float)
     """Poll ``/confirms`` at most ``retries`` times, ``delay`` seconds apart."""
     for attempt in range(retries):
         polled = core.confirmer.poll(deal_reference)
+        if isinstance(polled, Err) and isinstance(polled.error, OutcomeUnknownError):
+            # The poller says "outcome unknown" because it assumes a trade was just sent;
+            # here it is a plain lookup, so the real failure (often a network error) is
+            # raised instead of a message telling the caller to check their positions.
+            cause = polled.error.__cause__
+            raise cause if isinstance(cause, CapitalComError) else polled.error
         if polled is not None:
             return affected_deal_id(polled.unwrap())
         if attempt + 1 < retries:

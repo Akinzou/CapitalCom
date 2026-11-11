@@ -13,6 +13,12 @@ from capitalcom.domain.errors import TransportError
 _NOT_SENT = (requests.exceptions.ConnectTimeout,)
 
 
+def tls_verify(session: requests.Session) -> bool | str:
+    """``session.verify`` when it names a CA bundle, else ``True``; never ``False``."""
+    verify = session.verify
+    return verify if isinstance(verify, str) and verify else True
+
+
 class RequestsTransport:
     """Sends requests to one ``https`` base URL."""
 
@@ -39,7 +45,9 @@ class RequestsTransport:
             headers["Content-Type"] = "application/json"
         try:
             # verify and allow_redirects are passed on every call so an injected session
-            # configured with verify=False cannot switch TLS checks off. Redirects are not
+            # configured with verify=False cannot switch TLS checks off; a CA bundle path on
+            # the session is kept, since it still verifies (corporate TLS proxies need it).
+            # Redirects are not
             # followed because requests would resend the CST and X-SECURITY-TOKEN headers to
             # the redirect target, which may be another host.
             response = self._session.request(
@@ -49,7 +57,7 @@ class RequestsTransport:
                 params=dict(request.params),
                 data=data,
                 timeout=self._timeout,
-                verify=True,
+                verify=tls_verify(self._session),
                 allow_redirects=False,
             )
         except requests.exceptions.RequestException as error:

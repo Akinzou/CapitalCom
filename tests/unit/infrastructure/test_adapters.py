@@ -135,3 +135,10 @@ def test_close_leaves_a_caller_supplied_session_open() -> None:
     session = ClosableSession()
     RequestsTransport(BASE, session).close()
     assert session.closed is False
+
+
+def test_injected_session_ca_bundle_is_kept() -> None:
+    session = RecordingSession()
+    session.verify = "/etc/corp-ca.pem"
+    RequestsTransport(BASE, session).send(HttpRequest("GET", "/api/v1/ping"))
+    assert session.calls[0]["verify"] == "/etc/corp-ca.pem"

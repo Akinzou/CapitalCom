@@ -18,7 +18,6 @@ from capitalcom.domain.parsing import format_error
 from capitalcom.legacy.accounts import as_floats
 from capitalcom.legacy.attributes import LegacyAttributes
 from capitalcom.legacy.deprecation import warn_once
-from capitalcom.legacy.errors import requests_compatible
 from capitalcom.legacy.raw_request import send_raw
 from capitalcom.legacy.trading import (
     affected_deal_id,
@@ -63,7 +62,6 @@ class CapitalClient(LegacyAttributes):
     It logs in when constructed. Its 1.0.4 attributes live in ``LegacyAttributes``.
     """
 
-    @requests_compatible
     def __init__(self, api_key: str, login: str, password: str, demo: bool = True) -> None:
         warn_once("CapitalClient")
         self._api_key = api_key
@@ -78,14 +76,13 @@ class CapitalClient(LegacyAttributes):
         # The login is an e-mail address and the other two are secrets.
         return f"CapitalClient(base_url={self._base_url!r})"
 
-    @requests_compatible
     def login_session(self) -> None:
         """Log in again, replacing the current session tokens."""
         warn_once("CapitalClient.login_session")
         self._log_in()
 
     def _log_in(self) -> None:
-        self._core.session.adopt_tokens(None, None)
+        self._set_tokens(None, None)
         try:
             self._core.session.tokens().unwrap()
         except Exception as error:
@@ -93,7 +90,6 @@ class CapitalClient(LegacyAttributes):
             raise
         colored_log("INFO", "Session opened successfully.")
 
-    @requests_compatible
     def _request(self, method: str, path: str, **kwargs: Any) -> requests.Response:  # noqa: ANN401 - any requests keyword, as in 1.0.4
         """Authenticated request returning the raw response, whatever its status."""
         return send_raw(self._core, self._session, self._base_url, method, path, kwargs)
@@ -108,13 +104,11 @@ class CapitalClient(LegacyAttributes):
         warn_once("CapitalClient.pips_to_profit_distance")
         return _pips_to_distance(pips, pip_position)
 
-    @requests_compatible
     def get_deal_by_ref(self, deal_reference: str, retries: int = 10, delay: float = 0.1) -> str:
         """The dealId of the first deal ``deal_reference`` affected, once it is confirmed."""
         warn_once("CapitalClient.get_deal_by_ref")
         return resolve_deal_id(self._core, deal_reference, retries, delay)
 
-    @requests_compatible
     def open_raw_position(
         self,
         epic: str,
@@ -127,7 +121,6 @@ class CapitalClient(LegacyAttributes):
         warn_once("CapitalClient.open_raw_position")
         return self._open(epic, size, direction, stop_dist, profit_dist)
 
-    @requests_compatible
     def open_forex_position(
         self,
         epic: str,
@@ -147,27 +140,23 @@ class CapitalClient(LegacyAttributes):
             self.pips_to_profit_distance(profit_dist, 5),
         )
 
-    @requests_compatible
     def close_position_by_id(self, deal_id: str, size: float | None = None) -> str:
         """Close the whole position and return ``"SUCCESS"`` once it is confirmed."""
         warn_once("CapitalClient.close_position_by_id")
         return self._close(deal_id, size)
 
-    @requests_compatible
     def close_position_by_ref(self, deal_reference: str, size: float | None = None) -> str:
         """Resolve the dealId of ``deal_reference``, then close that whole position."""
         warn_once("CapitalClient.close_position_by_ref")
         _refuse_partial(size)
         return self.close_position_by_id(self.get_deal_by_ref(deal_reference), size=size)
 
-    @requests_compatible
     def get_open_positions(self) -> list[dict[str, Any]]:
         """Open positions as the raw dicts of ``GET /positions``, numbers as floats."""
         warn_once("CapitalClient.get_open_positions")
         positions: list[dict[str, Any]] = self._get("/api/v1/positions").get("positions", [])
         return positions
 
-    @requests_compatible
     def get_balance(
         self, account_id: str | None = None, raw: bool = False
     ) -> float | dict[str, Any]:
@@ -189,7 +178,6 @@ class CapitalClient(LegacyAttributes):
         amount: float = balance["balance"]
         return amount
 
-    @requests_compatible
     def list_accounts(self) -> list[dict[str, Any]]:
         """All accounts as raw dicts; each is logged at INFO, as in 1.0.4."""
         warn_once("CapitalClient.list_accounts")
@@ -204,7 +192,6 @@ class CapitalClient(LegacyAttributes):
             colored_log("INFO", f"Account ID: {acc_id}, Currency: {currency}, Balance: {balance}")
         return accounts
 
-    @requests_compatible
     def top_up_demo(self, amount: float) -> None:
         """Add ``amount`` to the demo account; the server refuses it on a live account."""
         warn_once("CapitalClient.top_up_demo")

@@ -33,9 +33,12 @@ green through the rewrite. Behaviour that changes on purpose has its own tests
 for any status. It cannot go through the dispatcher, which turns statuses into errors.
 Instead it:
 - takes tokens from the session manager and waits on the core's rate limiter;
-- always sends `verify=True` and `allow_redirects=False`, and refuses a caller's `verify` or
-  `allow_redirects` with `ValidationError`, because a redirect would carry the session tokens
-  to another host;
+- always verifies TLS and never follows redirects: `verify=False` or `allow_redirects=True`
+  raises `ValidationError`, because a redirect would carry the session tokens to another
+  host. A CA bundle path, given as `verify=` or set on `client.session.verify`, is honoured
+  (the core transport keeps a session's path too), since it still verifies;
+- refuses a path that does not start with a single `/`: `"@evil.example/x"` appended to the
+  host would make another host receive the tokens;
 - uses a `(5, 15)` s timeout unless the caller gives one (1.0.4 had none);
 - keeps 1.0.4's loop: one re-login on the first 401, a 1 s wait on a 429, ten attempts.
 
@@ -75,7 +78,9 @@ Instead it:
   from them, so assigning a new value would be ignored without a word; `AttributeError` says
   so instead. `repr()` shows only the host.
 - `cst` and `security_token` read the session manager, and their setters push a new token
-  pair into it; `None` drops the session.
+  pair into it. While only one half is set (after `cst = None`, or while a saved pair is
+  restored one attribute at a time) there is no session, and the half already assigned is
+  kept and readable rather than dropped.
 - `token_expiry` is the wall-clock time when the idle session expires, or `0` without one.
   Setting a past time drops the session, as it forced a login in 1.0.4. A future time cannot
   keep a session alive on the server, and the core renews on its own timer.

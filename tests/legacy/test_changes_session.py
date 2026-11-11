@@ -111,7 +111,8 @@ def test_token_attributes_round_trip_through_the_core(api: responses.RequestsMoc
     client._request("GET", "/api/v1/accounts")
     assert logins(api) == 1
     client.cst = None
-    assert client._headers() == {"CST": None, "X-SECURITY-TOKEN": None}
+    # As in 1.0.4, clearing one half leaves the other readable.
+    assert client._headers() == {"CST": None, "X-SECURITY-TOKEN": "tok-1"}
     client._request("GET", "/api/v1/accounts")
     assert logins(api) == 2
 

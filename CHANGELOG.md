@@ -18,7 +18,8 @@ All notable changes to this project are documented in this file. The format foll
   whose outcome is unknown after a timeout raises `OutcomeUnknownError` instead of being
   retried.
 - **Safe transport.** Every request has connect and read timeouts. TLS verification cannot be
-  switched off, redirects are not followed, and requests are throttled to Capital.com's
+  switched off (a CA bundle path set on an injected session is honoured, for TLS-inspecting
+  proxies), redirects are not followed, and requests are throttled to Capital.com's
   published limits. `429` responses are retried with backoff and `Retry-After`.
 - **Precise numbers.** Prices, sizes and amounts are `Decimal`, and timestamps are aware UTC
   `datetime` values.
@@ -70,8 +71,10 @@ All notable changes to this project are documented in this file. The format foll
    - `api_key`, `login`, `password`, `session` and `base_url` are read-only, and assigning
      one raises `AttributeError`.
    - `cst`, `security_token` and `token_expiry` still accept assignment.
-8. **`_request`.** It always verifies TLS and never follows redirects, and passing `verify`
-   or `allow_redirects` raises `ValidationError`.
+8. **`_request`.** It always verifies TLS and never follows redirects: `verify=False` or
+   `allow_redirects=True` raises `ValidationError`, while `verify=<CA bundle path>` and a
+   path set on `client.session.verify` still work. A path that does not start with a single
+   `/` raises too, so the session tokens cannot be sent to another host.
 9. **Narrower exports.** `from capitalcom import *` no longer re-exports the `requests`,
    `time`, `logging` and `random` modules.
 10. **Top-up result.** `top_up_demo` raises `ApiError` when the server answers

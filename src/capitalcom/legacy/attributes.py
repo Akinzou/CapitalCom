@@ -20,6 +20,7 @@ class LegacyAttributes:
     _session: requests.Session
     _base_url: str
     _core: Core
+    _pending_tokens: tuple[str | None, str | None] = (None, None)
 
     @property
     def api_key(self) -> str:
@@ -48,23 +49,34 @@ class LegacyAttributes:
 
     @property
     def cst(self) -> str | None:
-        """Current ``CST`` session token, or ``None`` without a session."""
+        """Current ``CST`` session token, or the one assigned while there is no session."""
         tokens = self._core.session.current_tokens()
-        return tokens.cst.reveal() if tokens is not None else None
+        return tokens.cst.reveal() if tokens is not None else self._pending_tokens[0]
 
     @cst.setter
     def cst(self, value: str | None) -> None:
-        self._core.session.adopt_tokens(value, self.security_token)
+        self._set_tokens(value, self.security_token)
 
     @property
     def security_token(self) -> str | None:
-        """Current ``X-SECURITY-TOKEN``, or ``None`` without a session."""
+        """Current ``X-SECURITY-TOKEN``, or the one assigned while there is no session."""
         tokens = self._core.session.current_tokens()
-        return tokens.security_token.reveal() if tokens is not None else None
+        return tokens.security_token.reveal() if tokens is not None else self._pending_tokens[1]
 
     @security_token.setter
     def security_token(self, value: str | None) -> None:
-        self._core.session.adopt_tokens(self.cst, value)
+        self._set_tokens(self.cst, value)
+
+    def _set_tokens(self, cst: str | None, security_token: str | None) -> None:
+        # 1.x code restores a saved pair one attribute at a time. Until both halves are
+        # present there is no usable session, so the half already assigned is kept here
+        # instead of being dropped, which would silently log in afresh on the next call.
+        if cst and security_token:
+            self._core.session.adopt_tokens(cst, security_token)
+            self._pending_tokens = (None, None)
+        else:
+            self._core.session.adopt_tokens(None, None)
+            self._pending_tokens = (cst, security_token)
 
     @property
     def token_expiry(self) -> float:
@@ -77,7 +89,7 @@ class LegacyAttributes:
         # A past time means "log in again", as it did in 1.0.4. A future time cannot keep a
         # session alive on the server; the core renews it on its own timer instead.
         if value <= time.time():
-            self._core.session.adopt_tokens(None, None)
+            self._set_tokens(None, None)
 
     def _headers(self) -> dict[str, str | None]:
         return {"CST": self.cst, "X-SECURITY-TOKEN": self.security_token}

@@ -1,15 +1,10 @@
 """Network errors of ``CapitalClient`` that 1.x ``except requests...`` clauses still catch."""
 
-import functools
-from collections.abc import Callable
-from typing import ParamSpec, TypeVar
-
 import requests
 
+from capitalcom.application.ports import HttpRequest, HttpResponse, HttpTransport
+from capitalcom.application.result import Err, Result
 from capitalcom.domain.errors import TransportError
-
-P = ParamSpec("P")
-R = TypeVar("R")
 
 
 class LegacyTransportError(TransportError, requests.exceptions.ConnectionError):
@@ -21,20 +16,22 @@ class LegacyTransportError(TransportError, requests.exceptions.ConnectionError):
     """
 
 
-def requests_compatible(method: Callable[P, R]) -> Callable[P, R]:
-    """Re-raise a ``TransportError`` from ``method`` as ``LegacyTransportError``.
+class LegacyTransport:
+    """Wraps the real transport so every network failure is a ``LegacyTransportError``.
 
-    ``OutcomeUnknownError`` is not a ``TransportError`` and passes unchanged: a trade whose
-    outcome is unknown must not be caught by a retry-on-network-error clause.
+    Mapped once, at the bottom of the stack, rather than per legacy method: a method added
+    later cannot forget it. ``OutcomeUnknownError`` is made above this layer and is not a
+    ``TransportError``, so a retry-on-network-error clause cannot resend a trade.
     """
 
-    @functools.wraps(method)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        try:
-            return method(*args, **kwargs)
-        except LegacyTransportError:
-            raise
-        except TransportError as error:
-            raise LegacyTransportError(str(error), error.reached_server) from error
+    def __init__(self, inner: HttpTransport) -> None:
+        self._inner = inner
 
-    return wrapper
+    def send(self, request: HttpRequest) -> Result[HttpResponse, TransportError]:
+        """Send through the wrapped transport, re-typing a network failure."""
+        sent = self._inner.send(request)
+        if isinstance(sent, Err) and not isinstance(sent.error, LegacyTransportError):
+            error = LegacyTransportError(str(sent.error), sent.error.reached_server)
+            error.__cause__ = sent.error
+            return Err(error)
+        return sent
