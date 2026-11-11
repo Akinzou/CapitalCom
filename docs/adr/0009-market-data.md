@@ -101,18 +101,18 @@ required. Only `updateTimeUTC` and `snapshotTimeUTC` become `datetime`. The loca
 
 `Resolution` is an enum, because the documented set of bar lengths is closed.
 
-## Observations (demo, filled in from the first contract run of stage 2b)
+## Observations (demo, 2026-11-11, first contract run of stage 2b on PR #4)
 
 | Question | Observed | Pinned by |
 |---|---|---|
-| Do all market rows parse, including quote-less ones? | pending | `test_all_markets_parse` |
-| Does navigation reach a leaf with markets? | pending | `test_navigation_reaches_markets` |
-| Pip size of USDJPY and EURUSD on rows and through `get()` | pending | `test_pip_scale_of_fx_pairs` |
-| Do details of every instrument type parse? | pending | `test_details_of_assorted_markets_parse` |
-| Is an unknown epic in `get_many` named? | pending | `test_get_many_names_unknown_epics` |
-| Empty window vs unknown epic on `/prices` | pending | `test_recent_prices` |
-| Sentiment sums to 100 and batches by epic | pending | `test_sentiment` |
-| Partial create, add, remove, delete of a watchlist | pending | `test_watchlist_round_trip` |
+| Do all market rows parse, including quote-less ones? | Yes: 4011 rows (3567 shares, 269 crypto, 115 FX, 33 commodities, 20 indices, 7 `UNKNOWN`); 3 without `bid`, 1 without `updateTimeUTC`; pip positions 0 to 7 | `test_all_markets_parse` |
+| Does navigation reach a leaf with markets? | Yes, at depth 2 (44 rows) | `test_navigation_reaches_markets` |
+| Pip size of USDJPY and EURUSD on rows and through `get()` | 0.01 and 0.0001 on search rows; 0.01 for USDJPY through `/prices` | `test_pip_scale_of_fx_pairs` |
+| Do details of every instrument type parse? | Yes: 50 epics sampled across all types, all returned in request order; max stop/profit distance in `PERCENTAGE` on all 50 | `test_details_of_assorted_markets_parse` |
+| Is an unknown epic in `get_many` named? | Yes, `NotFoundError` naming it | `test_get_many_names_unknown_epics` |
+| Empty window vs unknown epic on `/prices` | A 2001 window gives `()`; an unknown epic raises `NotFoundError`; the last 5 one-minute bars come in ascending time | `test_recent_prices` |
+| Sentiment sums to 100 and batches by epic | Yes, within 0.02; a batch of BTCUSD and EURUSD returns both | `test_sentiment` |
+| Partial create, add, remove, delete of a watchlist | As documented: partial create keeps BTCUSD only; add, remove and delete succeed; `get` after delete raises `NotFoundError` | `test_watchlist_round_trip` |
 
 ## Consequences
 
