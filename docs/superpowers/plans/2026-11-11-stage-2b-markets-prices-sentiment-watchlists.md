@@ -15,14 +15,14 @@
 
 ## Facts this plan relies on
 
-Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 2026-11-11), and four demo probe runs on 2026-11-11 (workflow_dispatch on a throwaway branch, since deleted).
+Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 2026-11-11), and five demo probe runs on 2026-11-11 (workflow_dispatch on a throwaway branch, since deleted).
 
 - **`GET /markets?epics=A,B`** answers `{"marketDetails": [<GET /markets/{epic} shape>]}` (undocumented; the docs claim `markets`), in request order with duplicates collapsed. Unknown or wrong-case epics are silently dropped (one unknown epic gives 200 and `[]`). More than 50 gives 400 `error.too-many.epics`; empty gives 400 `error.null.epic`.
 - **Market rows** (`GET /markets` with no params = 4011 rows; search; navigation leaves; watchlist markets) share one shape.
   - Always present: `epic`, `symbol`, `instrumentName`, `instrumentType` (including `UNKNOWN`), `marketStatus` (`TRADEABLE`/`CLOSED`), `lotSize`, `pipPosition` (int 0–7), `tickSize`, `scalingFactor`.
   - Sometimes absent, never `null`: `bid`/`offer`/`percentageChange` (3 rows), `high`/`low`/`netChange` (80), `updateTimeUTC` (1). Empty `searchTerm` gives 400 `error.null.searchTerm`; no hit gives `{"markets": []}`.
-- **`GET /markets/{epic}`** has `instrument`, `dealingRules` and `snapshot`, but **no `pipPosition`/`tickSize`** (EURUSD, USDJPY, BTCUSD, AAPL). `snapshot.updateTime` is local, with no UTC twin. Sizes and `minStepDistance` are `POINTS`; the three stop/profit distances are `PERCENTAGE`.
-- **`GET /prices/{epic}`** answers `{prices, instrumentType, pipPosition, tickSize}`; `max=1` returns the latest bar even on a closed market. `pipPosition`: EURUSD 4, USDJPY 2. A window with no bars gives 404 `error.prices.not-found`; `max` 0/1001 gives 400 `error.invalid.max`; `from > to` gives 400 `error.invalid.daterange`.
+- **Details shape** (`GET /markets/{epic}` and `marketDetails`; census of all 4011 epics through `?epics=`, every one returned): `instrument`, `dealingRules` and `snapshot`, but **no `pipPosition`/`tickSize`**. All `instrument` keys and all nine `dealingRules` keys are always present; sizes and `minStepDistance` are always `POINTS`, the three stop/profit distances always `PERCENTAGE`. Snapshot `bid`/`offer`/`percentageChange`/`updateTime` are absent in 3, `high`/`low`/`netChange` in 80. `updateTime` is local, with no UTC twin. `scalingFactor` is 1 on every row.
+- **`GET /prices/{epic}`** answers `{prices, instrumentType, pipPosition, tickSize}`; `max=1` returns the latest bar even on a closed market. `pipPosition` there: EURUSD 4 (USDJPY 2 was seen on search rows). A window with no bars gives 404 `error.prices.not-found`; an unknown epic gives 404 `error.not-found.epic`; `max` 0/1001 gives 400 `error.invalid.max`; `from > to` gives 400 `error.invalid.daterange`.
 - **Navigation:** a category answers `{"nodes": [...]}`; a leaf `{"nodes": [], "markets": [...]}`. `limit` 501 gives 400 `error.invalid.limit`.
 - **Sentiment:** the market id is the epic. One unknown id in a batch gives 404 `error.not-found.epic` for the whole call; empty `marketIds=` gives **500** `FIELD_VALIDATION_ERROR`.
 - **Watchlists:** create with one bogus epic gives 200 `SUCCESS_NOT_ALL_INSTRUMENTS_ADDED` (only the valid epic is kept); a 21-char name gives 400 `error.size.createwatchlistrequest.name`. PUT of a present epic gives `SUCCESS`, of a bogus one 404. DELETE of an absent epic gives 404 `error.not-found.epic`; GET of an unknown id 404 `error.invalid.watchlist`; a second DELETE 404 `error.not-found.watchlist`.
@@ -38,7 +38,7 @@ Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 
   - Keeps `RuleValue(value, unit: str)` and converts nothing, because the reference price for `PERCENTAGE` is undocumented.
   - `DealingRules.validate(order)` (spec §6.2) moves to 2c, where `OrderRequest`, its only input, is defined.
 - **`get_many` with missing epics:** raises `NotFoundError(200, None, "no market for epics: [...]")`. A silent drop would desync a caller's per-epic loop. This follows 2a's convention: status 200, because the server answered 200.
-- **Empty price window:** raises `NotFoundError` (`error.prices.not-found`) and is not turned into `()`. An unknown epic may answer with the same code, and an empty tuple would hide a typo.
+- **Empty price window:** `error.prices.not-found` becomes `()`, because a window without bars is an empty answer, not a failure. An unknown epic has its own code (`error.not-found.epic`) and still raises, so a typo is never hidden.
 - **Partial watchlist create:** returns `WatchlistCreation(watchlist_id, all_epics_added=False)`. An exception would lose the id of a list that already exists.
 
 ## Global Constraints
@@ -54,7 +54,7 @@ Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 
 ## Review Focus
 
 1. **A string where an iterable of ids is expected.** `get_many("EURUSD")` and `sentiment.get_many("BTCUSD")` must raise `ValidationError`, never send six one-letter epics. An empty iterable must raise too, never send `epics=` (400) or `marketIds=` (500). Pinned in Task 1.
-2. **An empty or path-breaking segment.** `watchlists.remove_market(wid, "")` must not become `DELETE /watchlists/{wid}/`, which deletes the whole list. An epic like `"A/B"` must be percent-encoded, never re-routed. Pinned in Tasks 1 and 6.
+2. **An empty or path-breaking segment.** `watchlists.remove_market(wid, "")` must not become `DELETE /watchlists/{wid}/`, which deletes the whole list. An epic like `"A/B"` must be percent-encoded, and `".."` rejected (`remove_market("..", "session")` would otherwise reach `DELETE /api/v1/session`). Pinned in Tasks 1 and 6.
 3. **Unknown or lowercase epic in `get_many`.** The server drops it silently, so the client must raise `NotFoundError` naming it. Pinned in Task 3.
 4. **A closed or quote-less market.** Rows lacking `bid`/`offer`/`high`/`low`/`updateTimeUTC` must parse with `None`, so `markets.all()` never fails on one odd row. Pinned in Task 2, and by the all-markets contract test in Task 7.
 5. **Pip size of JPY pairs.** USDJPY must give `pip_size == Decimal("0.01")`, EURUSD `Decimal("0.0001")`, with no hard-coded 5. Pinned in Tasks 2, 3 and 7.
@@ -67,7 +67,7 @@ Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 
 
 **Interfaces (Produces):**
 - `path_segment(value: object, field: str) -> str`:
-  - A non-`str`, or a value that is empty after `strip()`, raises `ValidationError(f"{field} must be a non-empty string")`.
+  - A non-`str`, a value that is empty after `strip()`, or `.`/`..` (which URL normalisation would collapse into a parent path) raises `ValidationError(f"{field} must be a non-empty string other than '.' or '..'")`.
   - Otherwise it returns `urllib.parse.quote(value, safe="")`.
 - `comma_list(values: Iterable[str], field: str, *, max_items: int | None) -> str`:
   - A `str` raises `ValidationError(f"{field} must be an iterable of strings, not a string")`.
@@ -79,7 +79,7 @@ Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 
 
 - [ ] **Step 1: Write the failing tests:**
   - `path_segment("A/B?#", "epic") == "A%2FB%3F%23"`.
-  - `path_segment("", "epic")`, `path_segment("  ", "epic")` and `path_segment(None, "epic")` raise `ValidationError`.
+  - `path_segment("", "epic")`, `path_segment("  ", "epic")`, `path_segment(".", "epic")`, `path_segment("..", "epic")` and `path_segment(None, "epic")` raise `ValidationError`.
   - `comma_list(["A", "B", "A"], "epics", max_items=50) == "A,B"`.
   - `comma_list("AB", "epics", max_items=50)` raises, and the message contains `"not a string"`.
   - `comma_list([], ...)`, `[""]`, `["A,B"]` and `[1]` raise.
@@ -104,14 +104,13 @@ Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 
   - `to_distance(pips: Decimal | int) -> Decimal` is `pips * size`. A `bool`, a non-number or a non-finite value raises `ValidationError`.
 - **`RuleValue(value: Decimal, unit: str)`:** `from_api(payload, field)`.
 - **`DealingRules`:**
-  - Required: `min_step_distance`, `min_deal_size`, `max_deal_size`, `min_size_increment` (`RuleValue`).
-  - Optional (`RuleValue | None`): `min_guaranteed_stop_distance`, `min_stop_or_profit_distance`, `max_stop_or_profit_distance`.
-  - Optional (`str | None`): `market_order_preference`, `trailing_stops_preference`.
+  - Required `RuleValue`: `min_step_distance`, `min_deal_size`, `max_deal_size`, `min_size_increment`, `min_guaranteed_stop_distance`, `min_stop_or_profit_distance`, `max_stop_or_profit_distance` (present on all 4011 markets).
+  - Required `str`: `market_order_preference`, `trailing_stops_preference`.
   - Plus `raw`.
 - **`Instrument`:**
   - Fields: `epic`, `symbol`, `name`, `type`, `currency` (str); `lot_size`, `margin_factor` (Decimal); `margin_factor_unit` (str); `guaranteed_stop_allowed` (bool); `pip: PipScale | None`; `raw`.
   - `from_api(payload, pip: PipScale | None)`.
-  - `pip_size -> Decimal` and `pips_to_distance(pips) -> Decimal` raise `ValidationError("pip scale unknown for <epic>: use cc.markets.get(epic)")` when `pip is None`.
+  - `pip_size -> Decimal` and `pips_to_distance(pips) -> Decimal` raise `ValidationError(f"pip scale unknown for {epic}: get_many() details carry none, and get() found no price data")` when `pip is None`.
   - `lots_to_size(lots: Decimal | int) -> Decimal` is `lots * lot_size`. It uses the same number check as `to_distance`.
 - **`MarketSnapshot`:**
   - Fields: `market_status` (str); `bid`, `offer`, `high`, `low`, `net_change`, `percentage_change` (`Decimal | None`); `decimal_places_factor`, `scaling_factor` (int); `raw`.
@@ -128,12 +127,12 @@ Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 
   - `MarketDetails.from_api(silver)`:
     - `instrument.pip is None`, and `instrument.pip_size` raises `ValidationError`;
     - `dealing_rules.max_stop_or_profit_distance == RuleValue(Decimal(60), "PERCENTAGE")`.
-  - Removing `minGuaranteedStopDistance` gives `None`. Removing `minDealSize` raises `ResponseFormatError` naming `minDealSize`.
+  - Removing `minDealSize` raises `ResponseFormatError` naming `minDealSize`.
   - `Instrument.lots_to_size(Decimal("2.5"))` with `lotSize` 1 gives `Decimal("2.5")`.
   - `Market.from_api(row)` without `bid`, `high` and `updateTimeUTC` parses with `None`s. Without `pipPosition` it raises.
   - `NodeContents.from_api({"nodes": [...]})` gives `markets == ()`.
 - [ ] **Step 2: Run** `pytest tests/unit/domain/test_market_details.py tests/unit/domain/test_markets.py -q`. Expected: FAIL with ImportError.
-- [ ] **Step 3: Implement.** If no existing helper fits, add `optional_mapping(payload, key)` to `parsing.py` for the optional `RuleValue` fields, with its own test in `tests/unit/domain/test_parsing.py`.
+- [ ] **Step 3: Implement** with the existing `parsing.py` helpers (`require_mapping`, `require_decimal`, `optional_decimal`, `require_int`, `optional_utc`).
 - [ ] **Step 4: Run** the same command plus `tests/unit/domain/test_parsing.py`. Expected: PASS.
 - [ ] **Step 5: Commit** `feat(domain): add market, instrument and dealing-rule read models`.
 
@@ -184,14 +183,14 @@ Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 
   - The keys are `resolution`, `max`, `from` and `to`, each only when given.
 - `PricesResource(core).history(epic: str, resolution: Resolution | None = None, *, limit: int | None = None, start: datetime | None = None, end: datetime | None = None) -> tuple[PriceBar, ...]`:
   - It calls `GET /api/v1/prices/{path_segment(epic)}`.
-  - The docstring says a window with no bars raises `NotFoundError` (`error.prices.not-found`).
+  - A 404 with `error_code == "error.prices.not-found"` returns `()`. Every other error raises.
 
 - [ ] **Step 1: Write the failing tests:**
   - `PriceBar.from_api(first_bar_of_doc_sample)` gives `time == datetime(2022, 4, 6, 13, 18, tzinfo=UTC)` and `open.bid == Decimal("24.356")`.
   - `price_params("HOUR_4", 5, aware_start, aware_end)` gives `{"resolution": "HOUR_4", "max": "5", "from": "...", "to": "..."}`.
   - `limit=0`, `limit=1001`, `limit=True`, `resolution="HOURLY"`, a naive start, and `start > end` each raise.
   - `history("BTCUSD", Resolution.MINUTE, limit=3)` sends `resolution=MINUTE&max=3` and returns 3 bars.
-  - A 404 body `{"errorCode": "error.prices.not-found"}` raises `NotFoundError` with that `error_code`.
+  - A 404 body `{"errorCode": "error.prices.not-found"}` gives `()`. A 404 body `{"errorCode": "error.not-found.epic"}` raises `NotFoundError`.
 - [ ] **Step 2: Run** `pytest tests/unit/domain/test_prices.py tests/unit/api/test_prices.py -q`. Expected: FAIL with ImportError.
 - [ ] **Step 3: Implement** and wire `self.prices`.
 - [ ] **Step 4: Run** `pytest tests/unit -q`. Expected: PASS.
@@ -269,7 +268,7 @@ Sources: the OpenAPI JSON embedded in https://open-api.capital.com/ (re-read on 
   - `test_get_many_names_unknown_epics`: `get_many(["BTCUSD", "NOSUCHEPIC999"])` raises `NotFoundError`.
   - `test_recent_prices`:
     - `history("BTCUSD", Resolution.MINUTE, limit=5)` gives 1..5 bars with ascending `time`;
-    - a window in 2001 raises `NotFoundError` with `error_code == "error.prices.not-found"`.
+    - a window in 2001 gives `()`, and `history("NOSUCHEPIC999")` raises `NotFoundError`.
   - `test_sentiment`: `get("BTCUSD")` long + short is within `Decimal("0.02")` of 100, and `get_many(["BTCUSD", "EURUSD"])` has both keys.
   - `test_watchlist_round_trip`:
     - sweep `cc-contract-` leftovers;
