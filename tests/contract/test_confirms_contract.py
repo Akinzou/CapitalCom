@@ -9,7 +9,7 @@ from capitalcom.api.composition import Core
 from capitalcom.application.result import Err
 from capitalcom.domain.confirmation import Outcome
 from capitalcom.domain.errors import ApiError
-from tests.contract.conftest import Market, close_position, open_position
+from tests.contract.conftest import Market, btc_position_ids, close_position, open_position
 
 pytestmark = pytest.mark.contract
 log = logging.getLogger("contract")
@@ -31,10 +31,16 @@ def test_open_and_close_are_confirmed(demo_core: Core, btc: Market) -> None:
     # whole hours.
     assert opened.date is not None
     assert abs(opened.date - datetime.now(UTC)) < timedelta(minutes=5)
-    # 1.0.4 returned affectedDeals[0].dealId; stage 3 keeps that only if it is the same id.
-    assert opened.deal_id == opened.affected_deals[0].deal_id
+    # Observed 2026-11-11 (ADR 0007): the top-level dealId is not the position. The position
+    # that opened is affectedDeals[0].dealId, which is what 1.0.4 returned and what every
+    # later call on the position must use.
+    position_id = opened.affected_deals[0].deal_id
+    assert opened.deal_id != position_id
+    open_ids = btc_position_ids(demo_core)
+    assert position_id in open_ids
+    assert opened.deal_id not in open_ids
 
-    closed = close_position(demo_core, opened.affected_deals[0].deal_id)
+    closed = close_position(demo_core, position_id)
     log.info("close confirmation: status=%s affectedDeals=%s", closed.status, closed.affected_deals)
     assert closed.outcome is Outcome.ACCEPTED
 
