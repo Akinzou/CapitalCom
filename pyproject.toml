@@ -67,8 +67,9 @@ select = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "ANN"]
-# The package root re-exports the legacy module's star surface unchanged until stage 3.
-"src/capitalcom/__init__.py" = ["F403"]
+# The package root re-exports the legacy module's star surface unchanged until stage 3 (F403),
+# and re-exports the 2.x names without __all__ so that surface is not narrowed (F401).
+"src/capitalcom/__init__.py" = ["F401", "F403"]
 
 [tool.mypy]
 strict = true
@@ -85,3 +86,13 @@ ignore_errors = true
 # Smoke tests call the untyped legacy API on purpose; stage 3 types it and removes this.
 module = "tests.legacy.*"
 disallow_untyped_calls = false
+
+[tool.coverage.run]
+branch = true
+# Legacy 1.0.4 module, kept unchanged and untested until stage 3 rewrites it on the new core;
+# stage 3 removes this omission.
+omit = ["*/capitalcom/client.py"]
+
+[tool.coverage.report]
+fail_under = 95
+show_missing = true

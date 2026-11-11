@@ -167,3 +167,11 @@ def test_concurrent_expiry_logs_in_once() -> None:
     assert session_posts(transport) == 1
     assert len(results) == 8
     assert all(r == results[0] for r in results)
+
+
+def test_success_body_that_is_not_json_is_response_format_error() -> None:
+    api, _, _, _ = make([login_ok(), response(200, b"<html>maintenance</html>")])
+    result = api.call("GET", "/api/v1/accounts")
+    assert isinstance(result, Err)
+    assert isinstance(result.error, ResponseFormatError)
+    assert "maintenance" in result.error.body
