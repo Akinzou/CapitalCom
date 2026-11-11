@@ -8,7 +8,8 @@ from enum import Enum
 from typing import Any
 
 from capitalcom.domain.enums import Direction
-from capitalcom.domain.parsing import format_error, to_decimal, to_utc
+from capitalcom.domain.errors import CapitalComError
+from capitalcom.domain.parsing import format_error, optional_decimal, optional_str, optional_utc
 
 
 class Outcome(Enum):
@@ -52,18 +53,18 @@ class DealConfirmation:
             raise format_error("dealReference", "missing")
         return cls(
             deal_reference=reference,
-            deal_id=_optional_str(payload, "dealId"),
-            deal_status=_optional_str(payload, "dealStatus"),
-            status=_optional_str(payload, "status"),
-            epic=_optional_str(payload, "epic"),
+            deal_id=optional_str(payload, "dealId"),
+            deal_status=optional_str(payload, "dealStatus"),
+            status=optional_str(payload, "status"),
+            epic=optional_str(payload, "epic"),
             direction=_direction(payload.get("direction")),
-            level=_optional_decimal(payload, "level"),
-            size=_optional_decimal(payload, "size"),
-            # The rejection shape is undocumented; both keys have been seen in IG-style APIs.
-            # The stage 1b contract test pins which one Capital.com uses.
-            reason=_optional_str(payload, "reason") or _optional_str(payload, "rejectReason"),
+            level=optional_decimal(payload, "level"),
+            size=optional_decimal(payload, "size"),
+            # The demo server sends rejectReason (RC_NOT_ENOUGH_MARGIN, ADR 0007); reason is
+            # still read first in case another environment uses the IG-style key.
+            reason=optional_str(payload, "reason") or optional_str(payload, "rejectReason"),
             affected_deals=_affected_deals(payload.get("affectedDeals")),
-            date=None if payload.get("date") is None else to_utc(payload["date"], "date"),
+            date=optional_utc(payload, "date"),
             raw=payload,
         )
 
@@ -89,19 +90,58 @@ class DealConfirmation:
         """True when the deal was booked."""
         return self.outcome is Outcome.ACCEPTED
 
+    @property
+    def position_id(self) -> str | None:
+        """Id of the position or working order this deal opened, or ``None``.
 
-def _optional_str(payload: Mapping[str, Any], key: str) -> str | None:
-    value = payload.get(key)
-    if value is None:
+        It is the first affected deal with status ``OPENED``; the top-level ``deal_id`` of an
+        opened position is not the position (ADR 0007). ``None`` when nothing opened, for
+        example when an opposite deal closed a position instead (netting).
+        """
+        for deal in self.affected_deals:
+            if deal.status == "OPENED":
+                return deal.deal_id
         return None
-    if not isinstance(value, str):
-        raise format_error(key, f"expected a string, got {type(value).__name__}")
-    return value
+
+    def require_size(self, requested: Decimal) -> "DealConfirmation":
+        """Return this confirmation if it booked ``requested``; otherwise raise.
+
+        The server rounds a size that is off its increment grid without saying so, so a
+        deal for 0.00015 can come back as 0.00010. The deal exists either way, which is why
+        the error carries this confirmation.
+        """
+        if self.size != requested:
+            raise SizeAdjustedError(requested, self)
+        return self
 
 
-def _optional_decimal(payload: Mapping[str, Any], key: str) -> Decimal | None:
-    value = payload.get(key)
-    return None if value is None else to_decimal(value, key)
+class SizeAdjustedError(CapitalComError):
+    """The server booked a different size than requested; the deal is open regardless."""
+
+    def __init__(self, requested: Decimal, confirmation: DealConfirmation) -> None:
+        if confirmation.size is None:
+            problem = f"the confirmation reports no booked size, so {requested} is unconfirmed"
+        else:
+            problem = f"booked size {confirmation.size} instead of {requested}"
+        # Not "the position is open": a netting deal closes one, and an order opens none.
+        super().__init__(
+            f"Deal {confirmation.deal_reference}: {problem}. The deal was booked; see "
+            ".confirmation (position_id of a new position, deal_id of an order).",
+            requested,
+            confirmation,
+        )
+        self._requested = requested
+        self._confirmation = confirmation
+
+    @property
+    def requested(self) -> Decimal:
+        """Size the caller asked for."""
+        return self._requested
+
+    @property
+    def confirmation(self) -> DealConfirmation:
+        """Confirmation of the deal as booked."""
+        return self._confirmation
 
 
 def _direction(value: object) -> Direction | None:
@@ -124,8 +164,8 @@ def _affected_deals(value: object) -> tuple[AffectedDeal, ...]:
     for item in value:
         if not isinstance(item, Mapping):
             raise format_error("affectedDeals", "expected objects")
-        deal_id = _optional_str(item, "dealId")
+        deal_id = optional_str(item, "dealId")
         if deal_id is None:
             raise format_error("affectedDeals.dealId", "missing")
-        deals.append(AffectedDeal(deal_id, _optional_str(item, "status") or ""))
+        deals.append(AffectedDeal(deal_id, optional_str(item, "status") or ""))
     return tuple(deals)

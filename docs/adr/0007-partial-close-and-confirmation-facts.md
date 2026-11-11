@@ -17,7 +17,7 @@ them. Below is what the first run on 2026-11-11 observed.
 | What does `GET /confirms/{unknown}` return? | HTTP 400, `error.invalid.dealReference` (not 404) | `test_unknown_reference_is_a_pending_signal` |
 | Is the confirmation's `dealId` the position id? | **No.** The position is `affectedDeals[0].dealId`; the top-level `dealId` differs and is not an open position | `test_open_and_close_are_confirmed` |
 | Does `DELETE /api/v1/positions` with `{"dealId", "size"}` close part of a position? | **No.** The size is ignored: the whole position is closed (`FULLY_CLOSED`), and `GET /positions/{id}` then answers 404 `error.not-found.dealId` | `test_legacy_partial_close_endpoint_closes_the_whole_position` |
-| Which key carries a rejection reason? | Not observed: no rejection happened. `reason` with a fallback to `rejectReason` stays an assumption | none yet |
+| Which key carries a rejection reason? | `rejectReason` (observed 2026-11-11 in the stage 2c probe: `RC_NOT_ENOUGH_MARGIN`, `dealStatus` `REJECTED`, `status` `DELETED`, no affected deals). `reason` is still read first | `test_position_size_rules` (ADR 0010) |
 
 ## Decisions
 

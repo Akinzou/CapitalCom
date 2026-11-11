@@ -4,15 +4,20 @@ import threading
 from dataclasses import dataclass, field
 
 from capitalcom.application.dispatcher import Dispatcher
+from capitalcom.application.login import (
+    PasswordEncryptor,
+    encrypt_for_login,
+    encryption_key_request,
+    is_already_active,
+    login_request,
+    parse_login,
+    switch_request,
+)
 from capitalcom.application.logs import forget_secret, get_logger, register_secret
-from capitalcom.application.ports import Clock, HttpRequest
+from capitalcom.application.ports import Clock, HttpRequest, HttpResponse
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.retry import SESSION_PATH
-from capitalcom.domain.errors import (
-    AuthenticationError,
-    CapitalComError,
-    ResponseFormatError,
-)
+from capitalcom.domain.errors import AuthenticationError, CapitalComError, ValidationError
 from capitalcom.domain.secret import Secret
 
 _log = get_logger(__name__)
@@ -48,10 +53,17 @@ class SessionTokens:
 class SessionManager:
     """Hands out valid tokens; at most one login is in flight at any time."""
 
-    def __init__(self, dispatcher: Dispatcher, clock: Clock, credentials: Credentials) -> None:
+    def __init__(
+        self,
+        dispatcher: Dispatcher,
+        clock: Clock,
+        credentials: Credentials,
+        encryptor: PasswordEncryptor | None = None,
+    ) -> None:
         self._dispatcher = dispatcher
         self._clock = clock
         self._credentials = credentials
+        self._encryptor = encryptor
         # One lock for check-and-login: eight threads finding an expired session must produce
         # one login, not eight that each rotate the tokens of the others.
         self._lock = threading.Lock()
@@ -59,19 +71,46 @@ class SessionManager:
         self._last_used = 0.0
         self._generation = 0
         self._closed = False
+        # The account the session is on, and the one the caller chose. They differ only
+        # between a fresh login (which lands on the default account) and the re-applied
+        # switch; a token is never handed out while they differ.
+        self._current_account: str | None = None
+        self._selected_account: str | None = None
         register_secret(credentials.api_key.reveal())
         register_secret(credentials.password.reveal())
 
     def tokens(self) -> Result[SessionTokens, CapitalComError]:
         """Return current tokens, logging in first when there are none or they are near expiry."""
         with self._lock:
-            if self._closed:
-                return Err(CapitalComError("client is closed; create a new one"))
-            now = self._clock.monotonic()
-            if self._tokens is not None and now - self._last_used < IDLE_TIMEOUT_S - RENEW_MARGIN_S:
-                return Ok(self._tokens)
-            self._drop()
-            return self._login()
+            return self._valid_tokens(self._selected_account)
+
+    @property
+    def current_account_id(self) -> str | None:
+        """Account the live session is on; ``None`` before the first login."""
+        with self._lock:
+            return self._current_account
+
+    def switch_account(self, account_id: str) -> Result[None, CapitalComError]:
+        """Move the session to ``account_id`` and keep it there across later re-logins."""
+        if not account_id:
+            return Err(ValidationError("account_id must be a non-empty string"))
+        with self._lock:
+            # Without a live session the login goes straight to ``account_id``: re-applying
+            # the old selection first would cost a request and, if that account can no
+            # longer be selected, would make it impossible to switch away from it.
+            tokens = self._valid_tokens(account_id)
+            if isinstance(tokens, Err):
+                return tokens
+            if self._current_account == account_id:
+                self._selected_account = account_id
+                return Ok(None)
+            switched = self._switch(tokens.value, account_id)
+            if isinstance(switched, Err) and isinstance(switched.error, AuthenticationError):
+                # The session died between the token check and the PUT; a login that targets
+                # the account directly does the switch as part of getting the new tokens.
+                self._drop()
+                switched = self._login(account_id)
+            return switched if isinstance(switched, Err) else Ok(None)
 
     def mark_used(self) -> None:
         """Record that the session served a request, which restarts the server's idle timer."""
@@ -116,33 +155,98 @@ class SessionManager:
             forget_secret(self._tokens.cst.reveal())
             forget_secret(self._tokens.security_token.reveal())
             self._tokens = None
+        self._current_account = None
 
-    def _login(self) -> Result[SessionTokens, CapitalComError]:
-        request = HttpRequest(
-            "POST",
-            SESSION_PATH,
-            headers={"X-CAP-API-KEY": self._credentials.api_key.reveal()},
-            json={
-                "identifier": self._credentials.identifier,
-                "password": self._credentials.password.reveal(),
-                "encryptedPassword": False,
-            },
-        )
-        sent = self._dispatcher.send(request)
+    def _valid_tokens(self, target: str | None) -> Result[SessionTokens, CapitalComError]:
+        if self._closed:
+            return Err(CapitalComError("client is closed; create a new one"))
+        now = self._clock.monotonic()
+        if self._tokens is not None and now - self._last_used < IDLE_TIMEOUT_S - RENEW_MARGIN_S:
+            return Ok(self._tokens)
+        self._drop()
+        return self._login(target)
+
+    def _login(self, target: str | None) -> Result[SessionTokens, CapitalComError]:
+        sent = self._send_login()
         if isinstance(sent, Err):
             return sent
-        response = sent.value
-        cst = response.header("CST")
-        security_token = response.header("X-SECURITY-TOKEN")
-        if not cst or not security_token:
-            missing = "CST" if not cst else "X-SECURITY-TOKEN"
-            return Err(
-                ResponseFormatError(response.status, None, f"login response lacks {missing}")
+        grant = parse_login(sent.value)
+        if isinstance(grant, Err):
+            return grant
+        tokens = self._adopt(grant.value.cst, grant.value.security_token)
+        self._current_account = grant.value.account_id
+        _log.info("logged in (session generation %d)", self._generation)
+        if target is None:
+            return Ok(tokens)
+        if target == self._current_account:
+            self._selected_account = target
+            return Ok(tokens)
+        # Also reached when the login did not name its account: the PUT then settles it, and
+        # an "already active" answer counts as success.
+        switched = self._switch(tokens, target)
+        if isinstance(switched, Err):
+            # A token for the default account must not reach a caller who chose another one:
+            # an order placed with it would land on the wrong account. The session is ended
+            # too, so repeated failures do not pile up sessions against the server's limit.
+            self._end(tokens)
+            self._drop()
+        return switched
+
+    def _send_login(self) -> Result[HttpResponse, CapitalComError]:
+        api_key = self._credentials.api_key.reveal()
+        password = self._credentials.password.reveal()
+        identifier = self._credentials.identifier
+        if self._encryptor is None:
+            return self._dispatcher.send(
+                login_request(api_key, identifier, password, encrypted=False)
             )
+        # A fresh key for every login, renewals included: the ciphertext embeds the server's
+        # timestamp, and a reused one may be refused as stale.
+        sent = self._dispatcher.send(encryption_key_request(api_key))
+        if isinstance(sent, Err):
+            return sent
+        encrypted = encrypt_for_login(sent.value, password, self._encryptor)
+        if isinstance(encrypted, Err):
+            return encrypted
+        # Masked only while the request can be logged: every login makes a new ciphertext, and
+        # keeping each one would grow the redaction registry for as long as the bot runs.
+        register_secret(encrypted.value)
+        try:
+            return self._dispatcher.send(
+                login_request(api_key, identifier, encrypted.value, encrypted=True)
+            )
+        finally:
+            forget_secret(encrypted.value)
+
+    def _end(self, tokens: SessionTokens) -> None:
+        ended = self._dispatcher.send(HttpRequest("DELETE", SESSION_PATH, tokens.headers()))
+        if isinstance(ended, Err):
+            _log.warning("could not end the session after a failed switch: %s", ended.error)
+
+    def _switch(
+        self, tokens: SessionTokens, account_id: str
+    ) -> Result[SessionTokens, CapitalComError]:
+        # Sent through the dispatcher, not ApiClient, because the answer may carry new
+        # session tokens in its headers and ApiClient keeps only the body.
+        sent = self._dispatcher.send(switch_request(tokens.headers(), account_id))
+        if isinstance(sent, Err):
+            if not is_already_active(sent.error):
+                return sent
+        else:
+            cst = sent.value.header("CST")
+            security_token = sent.value.header("X-SECURITY-TOKEN")
+            if cst and security_token:
+                self._drop()
+                tokens = self._adopt(cst, security_token)
+        self._current_account = self._selected_account = account_id
+        self._last_used = self._clock.monotonic()
+        _log.info("switched account")
+        return Ok(tokens)
+
+    def _adopt(self, cst: str, security_token: str) -> SessionTokens:
         register_secret(cst)
         register_secret(security_token)
         self._generation += 1
         self._tokens = SessionTokens(Secret(cst), Secret(security_token), self._generation)
         self._last_used = self._clock.monotonic()
-        _log.info("logged in (session generation %d)", self._generation)
-        return Ok(self._tokens)
+        return self._tokens

@@ -14,7 +14,7 @@ TOKENS = {"CST": "facade-cst-01", "X-SECURITY-TOKEN": "facade-xst-01"}
 @pytest.fixture
 def api() -> Iterator[responses.RequestsMock]:
     with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
-        mock.post(f"{DEMO}/api/v1/session", json={}, headers=TOKENS)
+        mock.post(f"{DEMO}/api/v1/session", json={"currentAccountId": "A"}, headers=TOKENS)
         mock.get(f"{DEMO}/api/v1/ping", json={"status": "OK"})
         yield mock
 
@@ -131,6 +131,36 @@ def test_public_exports() -> None:
         "OutcomeUnknownError",
         "DealRejectedError",
         "ConfirmationTimeoutError",
+        "SessionInfo",
+        "Account",
+        "Balance",
+        "AccountPreferences",
+        "Leverage",
+        "Activity",
+        "Transaction",
+        "Market",
+        "MarketNode",
+        "NodeContents",
+        "MarketDetails",
+        "Instrument",
+        "DealingRules",
+        "RuleValue",
+        "MarketSnapshot",
+        "PipScale",
+        "Resolution",
+        "PriceBar",
+        "BidAsk",
+        "Sentiment",
+        "Watchlist",
+        "WatchlistCreation",
+        "StopLoss",
+        "TakeProfit",
+        "OrderRequest",
+        "WorkingOrderRequest",
+        "OrderType",
+        "Position",
+        "WorkingOrder",
+        "SizeAdjustedError",
     }
     assert expected <= set(dir(capitalcom))
 

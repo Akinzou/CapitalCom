@@ -31,6 +31,8 @@ discord = "https://discord.gg/BARYa55KS8"
 [dependency-groups]
 dev = [
     "build>=1.2",
+    # The encryption extra, so its code is type-checked and tested in every CI job.
+    "cryptography>=44.0.1",
     "mypy>=1.13",
     "pytest>=8.3",
     "pytest-cov>=6.0",

@@ -4,10 +4,13 @@ Every converter names the field it was reading, so a payload change on Capital.c
 up as a precise error instead of a wrong number further down.
 """
 
-from datetime import UTC, datetime
+from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
-from capitalcom.domain.errors import ResponseFormatError
+from capitalcom.domain.enums import Direction
+from capitalcom.domain.errors import ApiError, ResponseFormatError
 
 # Parsers only ever see bodies of successful responses; a non-2xx body is turned into an
 # ApiError before any payload is parsed.
@@ -50,3 +53,125 @@ def to_utc(value: str, field: str) -> datetime:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=UTC)
     return parsed.astimezone(UTC)
+
+
+def _missing(payload: Mapping[str, Any], key: str) -> Any:  # noqa: ANN401 - untyped JSON
+    value = payload.get(key)
+    if value is None:
+        raise format_error(key, "missing")
+    return value
+
+
+def require_str(payload: Mapping[str, Any], key: str) -> str:
+    """Read a required string field."""
+    value = _missing(payload, key)
+    if not isinstance(value, str):
+        raise format_error(key, f"expected a string, got {type(value).__name__}")
+    return value
+
+
+def optional_str(payload: Mapping[str, Any], key: str) -> str | None:
+    """Read a string field that may be absent or null."""
+    return None if payload.get(key) is None else require_str(payload, key)
+
+
+def require_decimal(payload: Mapping[str, Any], key: str) -> Decimal:
+    """Read a required number field as ``Decimal``."""
+    return to_decimal(_missing(payload, key), key)
+
+
+def optional_decimal(payload: Mapping[str, Any], key: str) -> Decimal | None:
+    """Read a number field that may be absent or null."""
+    return None if payload.get(key) is None else require_decimal(payload, key)
+
+
+def require_bool(payload: Mapping[str, Any], key: str) -> bool:
+    """Read a required JSON boolean; ``0`` or ``"true"`` is a format error, not a truth value."""
+    value = _missing(payload, key)
+    if not isinstance(value, bool):
+        raise format_error(key, f"expected a boolean, got {type(value).__name__}")
+    return value
+
+
+def to_int(value: object, field: str) -> int:
+    """Convert a JSON integer, or a ``Decimal`` with an integral value, to ``int``."""
+    # bool is an int subclass and a Decimal may carry a fraction; both would be silently
+    # truncated or misread by int(), so they are rejected instead.
+    if isinstance(value, bool) or not isinstance(value, int | Decimal):
+        raise format_error(field, f"expected an integer, got {type(value).__name__}")
+    if isinstance(value, Decimal) and (not value.is_finite() or value != value.to_integral()):
+        raise format_error(field, f"not an integer: {value!r}")
+    return int(value)
+
+
+def require_int(payload: Mapping[str, Any], key: str) -> int:
+    """Read a required integer field."""
+    return to_int(_missing(payload, key), key)
+
+
+def require_list(payload: Mapping[str, Any], key: str) -> list[Any]:
+    """Read a required JSON array."""
+    value = _missing(payload, key)
+    if not isinstance(value, list):
+        raise format_error(key, f"expected a list, got {type(value).__name__}")
+    return value
+
+
+def as_mapping(value: object, field: str) -> Mapping[str, Any]:
+    """Return ``value`` when it is a JSON object; a response body or a list item, say."""
+    if not isinstance(value, Mapping):
+        raise format_error(field, f"expected an object, got {type(value).__name__}")
+    return value
+
+
+def require_mapping(payload: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    """Read a required JSON object."""
+    return as_mapping(_missing(payload, key), key)
+
+
+def require_utc(payload: Mapping[str, Any], key: str) -> datetime:
+    """Read a required UTC timestamp string."""
+    return to_utc(require_str(payload, key), key)
+
+
+def optional_utc(payload: Mapping[str, Any], key: str) -> datetime | None:
+    """Read a UTC timestamp string that may be absent or null."""
+    return None if payload.get(key) is None else require_utc(payload, key)
+
+
+def epoch_ms_to_utc(value: object, field: str) -> datetime:
+    """Convert epoch milliseconds to an aware UTC ``datetime``.
+
+    Adding a ``timedelta`` keeps the millisecond exact; ``fromtimestamp(ms / 1000)`` goes
+    through a float and can land a microsecond off.
+    """
+    return _EPOCH + timedelta(milliseconds=to_int(value, field))
+
+
+_EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def check_success(answer: object, what: str) -> None:
+    """Raise ``ApiError`` unless a 200 answer reports ``status`` ``SUCCESS``.
+
+    The server answers some refused changes with 200 and another status, so a 200 alone is
+    not taken as proof that the change happened.
+    """
+    if not isinstance(answer, Mapping) or answer.get("status") != "SUCCESS":
+        raise ApiError(_SUCCESS_STATUS, None, f"{what}: {answer!r}")
+
+
+def require_direction(payload: Mapping[str, Any], key: str) -> Direction:
+    """Read a required ``BUY``/``SELL``; any other value is a format error."""
+    value = require_str(payload, key)
+    try:
+        return Direction(value)
+    except ValueError:
+        raise format_error(key, f"unknown value {value!r}") from None
+
+
+def flag(payload: Mapping[str, Any], key: str) -> bool:
+    """Read a boolean the server leaves out when it is false; any non-boolean is an error."""
+    if key not in payload:
+        return False
+    return require_bool(payload, key)

@@ -85,14 +85,14 @@ is allowed (ADR 0003). A test fails the build on any import cycle or outward imp
 ### 6.1 Public API shape (new)
 
 ```python
-from capitalcom import CapitalCom, Environment, Direction
+from capitalcom import CapitalCom, Direction, Environment, StopLoss, TakeProfit
 
 with CapitalCom(api_key, identifier, password, environment=Environment.DEMO) as cc:
-    deal = cc.positions.open(
-        "EURUSD", Direction.BUY, size=Decimal("1000"), stop_distance=Decimal("0.0010")
-    )
-    cc.positions.amend(deal.deal_id, profit_level=Decimal("1.1000"))
-    cc.positions.close(deal.deal_id)
+    stop = StopLoss(distance=Decimal("0.0010"))
+    deal = cc.positions.open("EURUSD", Direction.BUY, size=Decimal("1000"), stop=stop)
+    # amend replaces all protection, so the stop is passed again to keep it (ADR 0010).
+    cc.positions.amend(deal.position_id, stop=stop, profit=TakeProfit(level=Decimal("1.1")))
+    cc.positions.close(deal.position_id)
 ```
 
 - Namespaces: `session`, `accounts`, `history`, `positions`, `orders`, `markets`, `prices`,
@@ -108,12 +108,13 @@ with CapitalCom(api_key, identifier, password, environment=Environment.DEMO) as 
 - `Instrument`:
   - `pip_size` comes from the API's `pipPosition`, not a hard-coded 5. This fixes JPY pairs.
   - `pips_to_distance()` and `lots_to_size()` use the instrument's `lotSize`.
-- `DealingRules.validate(order)`: checks minimum and maximum size, size increment, and stop and
-  profit distance before sending.
+- `DealingRules.validate(order)`: checks minimum and maximum size and the size increment before
+  sending. Stop and profit distances are left to the server, which applies its percentage limits
+  to the resulting level against the live quote (ADR 0010).
 - `OrderRequest`: enforces the documented constraints:
   - `guaranteedStop` needs a stop, and cannot be combined with `trailingStop`.
   - `trailingStop` needs `stopDistance`.
-  - Real stocks cannot carry a stop loss or take profit.
+  - Real stocks cannot carry a stop loss or take profit (deferred, see below).
 - `DealConfirmation.is_accepted`. An impossible state raises inside the domain; nothing is
   silently defaulted.
 - **Pre-trade validation is opt-in (designer's call).**
@@ -121,8 +122,8 @@ with CapitalCom(api_key, identifier, password, environment=Environment.DEMO) as 
     `cc.markets.get(epic)`). When it is given, the request is validated locally before sending.
   - Without it, the server's validation is authoritative. This avoids a hidden extra request per
     trade and the need for a market-details cache in the core.
-  - The "real stocks" rule applies when the instrument's `type` is `SHARES` and the account is
-    not a CFD account. The stage-2 contract tests confirm how Capital.com reports this.
+  - The "real stocks" rule is deferred: the demo account is CFD-only, so it cannot be observed,
+    and the server stays authoritative (ADR 0010).
 
 ### 6.3 Application services
 - **Session manager:**
@@ -147,8 +148,8 @@ with CapitalCom(api_key, identifier, password, environment=Environment.DEMO) as 
 ### 6.4 Errors (public)
 - `CapitalComError(Exception)` is the root. Under it: `AuthenticationError`, `RateLimitError`,
   `NotFoundError`, `ValidationError` (local rule violation), `ApiError` (status, errorCode,
-  body), `TransportError`, `OutcomeUnknownError`, `DealRejectedError`, and
-  `ConfirmationTimeoutError`.
+  body), `TransportError`, `OutcomeUnknownError`, `DealRejectedError`,
+  `ConfirmationTimeoutError`, and `SizeAdjustedError` (the server booked another size; ADR 0010).
 - Everything subclasses `Exception`, so legacy `except Exception` keeps working.
 - Error body format: the official docs do not describe it. We observed it live on 2026-11-11:
   `{"errorCode": "error.invalid.api.key"}` with HTTP 401. `ApiError.error_code` is read from

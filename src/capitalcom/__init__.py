@@ -9,8 +9,9 @@
 from .api.client import CapitalCom
 from .application.retry import RetryPolicy
 from .client import *
-from .domain.confirmation import DealConfirmation
-from .domain.enums import Direction, Environment
+from .domain.account import Account, AccountPreferences, Balance, Leverage, SessionInfo
+from .domain.confirmation import DealConfirmation, SizeAdjustedError
+from .domain.enums import Direction, Environment, OrderType, Resolution
 from .domain.errors import (
     ApiError,
     AuthenticationError,
@@ -24,3 +25,20 @@ from .domain.errors import (
     TransportError,
     ValidationError,
 )
+from .domain.history import Activity, Transaction
+from .domain.market_details import (
+    DealingRules,
+    Instrument,
+    MarketDetails,
+    MarketSnapshot,
+    PipScale,
+    RuleValue,
+)
+from .domain.markets import Market, MarketNode, NodeContents
+from .domain.order_request import OrderRequest, WorkingOrderRequest
+from .domain.positions import Position
+from .domain.prices import BidAsk, PriceBar
+from .domain.protection import StopLoss, TakeProfit
+from .domain.sentiment import Sentiment
+from .domain.watchlist import Watchlist, WatchlistCreation
+from .domain.working_orders import WorkingOrder

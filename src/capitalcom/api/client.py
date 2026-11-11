@@ -4,8 +4,16 @@ from types import TracebackType
 
 import requests
 
+from capitalcom.api.accounts import AccountsResource
 from capitalcom.api.composition import Core, build_core
+from capitalcom.api.history import HistoryResource
+from capitalcom.api.markets import MarketsResource
+from capitalcom.api.orders import OrdersResource
+from capitalcom.api.positions import PositionsResource
+from capitalcom.api.prices import PricesResource
+from capitalcom.api.sentiment import SentimentResource
 from capitalcom.api.session_resource import SessionResource
+from capitalcom.api.watchlists import WatchlistsResource
 from capitalcom.application.logs import get_logger
 from capitalcom.application.result import Err
 from capitalcom.application.retry import RetryPolicy
@@ -35,6 +43,7 @@ class CapitalCom:
         timeout: tuple[float, float] = (5.0, 15.0),
         retry: RetryPolicy | None = None,
         confirm_timeout: float = 5.0,
+        encrypted_password: bool = False,
     ) -> None:
         if not api_key or not identifier or not password:
             raise ValueError("api_key, identifier and password must not be empty")
@@ -46,9 +55,18 @@ class CapitalCom:
             timeout=timeout,
             retry=retry,
             confirm_timeout_s=confirm_timeout,
+            encrypted_password=encrypted_password,
         )
         self._closed = False
         self.session = SessionResource(self._core)
+        self.accounts = AccountsResource(self._core)
+        self.history = HistoryResource(self._core)
+        self.positions = PositionsResource(self._core)
+        self.orders = OrdersResource(self._core)
+        self.markets = MarketsResource(self._core)
+        self.prices = PricesResource(self._core)
+        self.sentiment = SentimentResource(self._core)
+        self.watchlists = WatchlistsResource(self._core)
 
     def __repr__(self) -> str:
         # The identifier is the account's e-mail address, so only the environment is shown.

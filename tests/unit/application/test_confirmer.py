@@ -20,7 +20,11 @@ from capitalcom.domain.errors import (
 from capitalcom.domain.secret import Secret
 from tests.fakes import FakeClock, FakeTransport, response
 
-LOGIN = response(200, b"{}", {"CST": "confirm-cst-0001", "X-SECURITY-TOKEN": "confirm-xst-0001"})
+LOGIN = response(
+    200,
+    b'{"currentAccountId": "A"}',
+    {"CST": "confirm-cst-0001", "X-SECURITY-TOKEN": "confirm-xst-0001"},
+)
 NOT_READY = response(400, b'{"errorCode":"error.invalid.dealReference"}')
 
 
