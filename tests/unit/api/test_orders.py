@@ -155,3 +155,14 @@ def test_bad_ids_never_reach_the_server(api: responses.RequestsMock, order_id: s
 def test_list_parses_orders(api: responses.RequestsMock) -> None:
     api.get(ORDERS, json=wire({"workingOrders": [order_item("W1"), order_item("W2")]}))
     assert [o.deal_id for o in client().orders.list()] == ["W1", "W2"]
+
+
+def test_amend_refuses_a_string_good_till(api: responses.RequestsMock) -> None:
+    with pytest.raises(ValidationError, match="good_till"):
+        client().orders.amend(
+            "W1",
+            good_till="2030-01-01T00:00:00",  # type: ignore[arg-type]
+            stop=None,
+            profit=None,
+        )
+    assert len(api.calls) == 0

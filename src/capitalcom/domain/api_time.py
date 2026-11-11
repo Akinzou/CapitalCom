@@ -12,6 +12,10 @@ _API_FORMAT = "%Y-%m-%dT%H:%M:%S"
 
 def to_api_time(value: datetime, field: str) -> str:
     """Return ``value`` in UTC as ``YYYY-MM-DDTHH:MM:SS``; a naive value raises."""
+    # A date or an ISO string has no zone to convert from; refused like a naive datetime,
+    # rather than escaping as an AttributeError that no CapitalComError handler catches.
+    if not isinstance(value, datetime):
+        raise ValidationError(f"{field}: expected a datetime, got {value!r}")
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValidationError(f"{field}: datetime must be timezone-aware")
     return value.astimezone(UTC).strftime(_API_FORMAT)

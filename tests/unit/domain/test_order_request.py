@@ -1,6 +1,6 @@
 """Order requests: checked when built, so nothing invalid is ever sent."""
 
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -95,3 +95,9 @@ def test_aware_utc_good_till_is_sent_unchanged() -> None:
     good_till = datetime(2030, 1, 1, tzinfo=UTC)
     body = WorkingOrderRequest(order(), 20, "STOP", good_till).to_body()
     assert body["goodTillDate"] == "2030-01-01T00:00:00"
+
+
+@pytest.mark.parametrize("good_till", [date(2030, 1, 1), "2030-01-01T00:00:00"])
+def test_a_good_till_that_is_not_a_datetime_is_a_validation_error(good_till: object) -> None:
+    with pytest.raises(ValidationError, match="good_till"):
+        WorkingOrderRequest(order(), 20, "LIMIT", good_till)  # type: ignore[arg-type]

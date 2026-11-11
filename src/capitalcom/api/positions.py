@@ -46,7 +46,7 @@ class PositionsResource:
 
         The new position's id is ``confirmation.position_id``. With ``instrument`` (from
         ``cc.markets.get(epic)``) the size is checked against the dealing rules first.
-        ``SizeAdjustedError`` means the server booked another size; the position is open.
+        ``SizeAdjustedError`` means the server booked another size; the deal was booked.
         """
         request = OrderRequest(epic, direction, size, stop, profit)
         if instrument is not None:

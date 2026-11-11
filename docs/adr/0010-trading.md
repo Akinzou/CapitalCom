@@ -132,5 +132,9 @@ To be filled in from the first CI run of these tests on PR #4.
   this.
 - An off-grid size is caught before sending only when the caller passes `instrument=`.
   Without it, the server rounds the size and the client raises after the deal is booked.
+- The booked-size check runs on every open, netting included. Only equal sizes were observed
+  netting; a netting open of another size may report a size that differs from the request and
+  raise `SizeAdjustedError` for a deal that was booked as asked. The error carries the
+  confirmation, so nothing is lost, and its message no longer claims a position is open.
 - If Capital.com starts merging amends or stops rounding sizes, the contract tests show it;
   revisit this ADR then.

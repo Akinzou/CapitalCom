@@ -192,3 +192,12 @@ def test_size_adjusted_error_survives_pickling() -> None:
     # Round-trips an object this test just built; no external data is ever unpickled.
     copy = pickle.loads(pickle.dumps(error))  # noqa: S301
     assert (copy.requested, copy.confirmation.position_id) == (Decimal("2"), "P1")
+
+
+def test_size_adjusted_message_names_a_missing_size_and_claims_no_open_position() -> None:
+    missing = SizeAdjustedError(Decimal(1), observed("OPEN", [("W1", "OPENED")], size=None))
+    assert "no booked size" in str(missing)
+    netted = SizeAdjustedError(Decimal(1), observed("CLOSED", [("P0", "FULLY_CLOSED")]))
+    for error in (missing, netted):
+        assert "is open" not in str(error)
+        assert "was booked" in str(error)

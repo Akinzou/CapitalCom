@@ -119,9 +119,14 @@ class SizeAdjustedError(CapitalComError):
     """The server booked a different size than requested; the deal is open regardless."""
 
     def __init__(self, requested: Decimal, confirmation: DealConfirmation) -> None:
+        if confirmation.size is None:
+            problem = f"the confirmation reports no booked size, so {requested} is unconfirmed"
+        else:
+            problem = f"booked size {confirmation.size} instead of {requested}"
+        # Not "the position is open": a netting deal closes one, and an order opens none.
         super().__init__(
-            f"Deal {confirmation.deal_reference}: booked size {confirmation.size} instead of "
-            f"{requested}. The deal is open; see .confirmation.position_id.",
+            f"Deal {confirmation.deal_reference}: {problem}. The deal was booked; see "
+            ".confirmation (position_id of a new position, deal_id of an order).",
             requested,
             confirmation,
         )
