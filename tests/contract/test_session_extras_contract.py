@@ -75,7 +75,9 @@ def test_switch_round_trip(demo_core: Core) -> None:
     try:
         session.switch_account(others[0])
         after = demo_core.session.tokens().unwrap()
-        log.info("switch changed tokens: %s", after.generation != before.generation)
+        log.info(
+            "switch started a new session generation: %s", after.generation != before.generation
+        )
         assert session.info().account_id == others[0]
     finally:
         session.switch_account(original)

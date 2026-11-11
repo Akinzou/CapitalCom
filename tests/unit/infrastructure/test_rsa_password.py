@@ -50,9 +50,9 @@ def test_unsupported_key_type_raises_value_error(monkeypatch: pytest.MonkeyPatch
 
 
 def test_password_too_long_for_the_key_is_validation_error() -> None:
-    private = rsa.generate_private_key(public_exponent=65537, key_size=1024)  # noqa: S505 - small key, short limit
+    private = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     der = private.public_key().public_bytes(
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
     )
     with pytest.raises(ValidationError, match="too long"):
-        encrypt_password("x" * 200, base64.b64encode(der).decode(), 1)
+        encrypt_password("x" * 300, base64.b64encode(der).decode(), 1)
