@@ -33,7 +33,9 @@ class PricesResource:
         """Bars of ``epic``, oldest first; ``()`` when the window holds none.
 
         Without arguments the server returns the last 10 one-minute bars. ``limit`` is
-        1..1000; ``start`` and ``end`` must be timezone-aware.
+        1..1000; ``start`` and ``end`` must be timezone-aware. With a window and no ``limit``
+        up to 1000 bars are asked for; a window holding more is cut at that number, so a
+        long range is read in several calls.
         """
         path = f"/api/v1/prices/{path_segment(epic, 'epic')}"
         params = price_params(resolution, limit, start, end)

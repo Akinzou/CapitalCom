@@ -127,3 +127,17 @@ def test_get_many_refuses_bad_epic_lists(api: responses.RequestsMock, epics: obj
     with pytest.raises(ValidationError, match="epics"):
         client().markets.get_many(epics)  # type: ignore[arg-type]
     assert len(api.calls) == 0
+
+
+def test_get_raises_when_prices_do_not_know_the_epic(api: responses.RequestsMock) -> None:
+    api.get(f"{MARKETS}/USDJPY", json=wire(details("USDJPY")))
+    api.get(f"{DEMO}/api/v1/prices/USDJPY", status=404, json={"errorCode": "error.not-found.epic"})
+    with pytest.raises(NotFoundError) as caught:
+        client().markets.get("USDJPY")
+    assert caught.value.error_code == "error.not-found.epic"
+
+
+def test_browse_without_a_limit_sends_none(api: responses.RequestsMock) -> None:
+    api.get(f"{DEMO}/api/v1/marketnavigation/n1", json={"nodes": []})
+    assert client().markets.browse("n1").nodes == ()
+    assert sent(api) == [f"{DEMO}/api/v1/marketnavigation/n1"]

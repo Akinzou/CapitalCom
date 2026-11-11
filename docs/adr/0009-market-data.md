@@ -50,8 +50,10 @@ The pip scale is what turns pips into a price distance. Market details carry no 
 1. `GET /markets/{epic}`;
 2. `GET /prices/{epic}?max=1`, for `pipPosition` and `tickSize`.
 
-If the second read answers with a 404, `Instrument.pip` stays `None`. `pip_size` and
-`pips_to_distance` then raise `ValidationError`. Any other error is raised. `get_many` makes
+If the second read answers `error.prices.not-found` (the market has no bars),
+`Instrument.pip` stays `None`. `pip_size` and `pips_to_distance` then raise
+`ValidationError`. Any other error is raised, including a 404 `error.not-found.epic`: a
+downgrade there would hide a real failure behind a misleading "no price data". `get_many` makes
 one request and leaves `pip` as `None`; its docstring says so. Market rows always carry
 `pipPosition`, so `Market.pip` is required.
 
@@ -68,12 +70,17 @@ are defined.
 
 ### Silent drops become errors; empty answers stay empty
 
-- `get_many` raises `NotFoundError` naming every requested epic the server left out. Without
+- `markets.get_many` and `sentiment.get_many` raise `NotFoundError` naming every requested
+  id the server left out, and return the rest in request order. Without
   it, a caller looping over its epics would read a missing key as a server fault or skip the
   epic unnoticed. The status is 200 because the server answered 200, as in stage 2a.
 - `prices.history` returns `()` for `error.prices.not-found`, because a window without bars
   is an empty answer. An unknown epic has its own code and still raises, so a typo is never
   hidden behind an empty tuple.
+- A `prices.history` window without `limit` sends `max=1000`, the documented maximum.
+  Without it the server stops at its default of 10 bars and a window comes back cut short
+  with no sign of it. A window holding more than 1000 bars is still cut, as the docstring
+  says, so a long range is read in several calls.
 - A partial watchlist create returns `WatchlistCreation(watchlist_id, all_epics_added=False)`.
   An exception would lose the id of a list that already exists.
 - `create` refuses a name outside 1..20 characters before sending. Watchlist changes require

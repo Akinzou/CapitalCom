@@ -75,6 +75,10 @@ def price_params(
         if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_BARS:
             raise ValidationError(f"limit must be an int within 1..{MAX_BARS}, got {limit!r}")
         params["max"] = str(limit)
+    elif start is not None or end is not None:
+        # Without max the server stops at its default of 10 bars, which would cut a window
+        # short with no sign of it; the documented maximum is asked for instead.
+        params["max"] = str(MAX_BARS)
     if start is not None:
         params["from"] = to_api_time(start, "start")
     if end is not None:

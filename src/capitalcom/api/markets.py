@@ -3,6 +3,7 @@
 from collections.abc import Iterable, Mapping
 
 from capitalcom.api.composition import Core
+from capitalcom.api.prices import NO_BARS
 from capitalcom.application.result import Err
 from capitalcom.domain.errors import NotFoundError, ValidationError
 from capitalcom.domain.market_details import MarketDetails, PipScale
@@ -54,14 +55,15 @@ class MarketsResource:
 
         Two reads: the details carry no pip data, so the latest price bar
         (``GET /prices/{epic}?max=1``) supplies ``pipPosition`` and ``tickSize``. When that
-        market has no price data the pip scale stays ``None``; any other error is raised.
+        market has no price data (``error.prices.not-found``) the pip scale stays ``None``;
+        any other error, an unknown epic included, is raised.
         """
         segment = path_segment(epic, "epic")
         body = self._core.api.call("GET", f"/api/v1/markets/{segment}").unwrap()
         prices = self._core.api.call("GET", f"/api/v1/prices/{segment}", params={"max": "1"})
         pip: PipScale | None = None
         if isinstance(prices, Err):
-            if not isinstance(prices.error, NotFoundError):
+            if not (isinstance(prices.error, NotFoundError) and prices.error.error_code == NO_BARS):
                 prices.unwrap()
         else:
             pip = PipScale.from_api(as_mapping(prices.value, "prices"))

@@ -7,7 +7,7 @@ import pytest
 import responses
 
 from capitalcom.api.client import CapitalCom
-from capitalcom.domain.errors import ResponseFormatError, ValidationError
+from capitalcom.domain.errors import NotFoundError, ResponseFormatError, ValidationError
 from tests.unit.api.test_facade import DEMO, TOKENS
 
 SENTIMENT = f"{DEMO}/api/v1/clientsentiment"
@@ -81,3 +81,19 @@ def test_get_refuses_a_bad_id(api: responses.RequestsMock, market_id: object) ->
     with pytest.raises(ValidationError, match="market_id"):
         client().sentiment.get(market_id)  # type: ignore[arg-type]
     assert len(api.calls) == 0
+
+
+def test_get_many_names_ids_the_server_left_out(api: responses.RequestsMock) -> None:
+    row = {"marketId": "BTCUSD", "longPositionPercentage": 86.58, "shortPositionPercentage": 13.42}
+    api.get(SENTIMENT, json={"clientSentiments": [row]})
+    with pytest.raises(NotFoundError, match="btcusd"):
+        client().sentiment.get_many(["btcusd"])
+
+
+def test_get_many_follows_request_order(api: responses.RequestsMock) -> None:
+    rows = [
+        {"marketId": m, "longPositionPercentage": 50, "shortPositionPercentage": 50}
+        for m in ("B", "A")
+    ]
+    api.get(SENTIMENT, json={"clientSentiments": rows})
+    assert list(client().sentiment.get_many(["A", "B"])) == ["A", "B"]

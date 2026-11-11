@@ -64,3 +64,10 @@ def test_params_refuse_values_the_server_rejects(
 ) -> None:
     with pytest.raises(ValidationError, match=match):
         price_params(resolution, limit, start, end)  # type: ignore[arg-type]
+
+
+def test_a_window_without_a_limit_asks_for_the_maximum() -> None:
+    # Without max the server stops at its default of 10 bars, silently cutting the window.
+    assert price_params(None, None, START, END)["max"] == "1000"
+    assert price_params(None, None, None, END)["max"] == "1000"
+    assert price_params(None, 7, START, END)["max"] == "7"
