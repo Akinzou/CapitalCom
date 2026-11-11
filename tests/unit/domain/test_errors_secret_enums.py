@@ -110,6 +110,7 @@ def test_direction_values_match_api() -> None:
 @pytest.mark.parametrize("error", ALL_ERRORS, ids=lambda e: type(e).__name__)
 def test_errors_survive_pickling(error: CapitalComError) -> None:
     # multiprocessing and concurrent.futures pickle exceptions raised in workers.
-    clone = pickle.loads(pickle.dumps(error))  # noqa: S301 - round-trips our own object
+    # Round-trips an object this test just built; no external data is ever unpickled.
+    clone = pickle.loads(pickle.dumps(error))  # noqa: S301  # nosemgrep: python.lang.security.deserialization.pickle.avoid-pickle
     assert type(clone) is type(error)
     assert str(clone) == str(error)
