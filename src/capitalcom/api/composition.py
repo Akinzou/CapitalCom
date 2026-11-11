@@ -27,6 +27,7 @@ class Core:
     api: ApiClient
     confirmer: DealConfirmer
     release: Callable[[], None]
+    environment: Environment
 
 
 def build_core(
@@ -52,7 +53,7 @@ def build_core(
     session = SessionManager(dispatcher, clock, credentials, encryptor)
     api = ApiClient(dispatcher, session)
     confirmer = DealConfirmer(api, clock, timeout_s=confirm_timeout_s)
-    return Core(dispatcher, session, api, confirmer, release)
+    return Core(dispatcher, session, api, confirmer, release, environment)
 
 
 def _load_encryptor() -> PasswordEncryptor:

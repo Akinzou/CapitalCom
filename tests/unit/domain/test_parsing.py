@@ -43,6 +43,8 @@ def test_decimal_converters() -> None:
     assert optional_decimal({}, "n") is None
     with pytest.raises(ResponseFormatError):
         require_decimal({}, "n")
+    with pytest.raises(ResponseFormatError, match="finite"):
+        require_decimal({"n": "NaN"}, "n")
 
 
 def test_require_bool_rejects_non_bool() -> None:

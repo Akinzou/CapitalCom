@@ -115,12 +115,16 @@ def require_list(payload: Mapping[str, Any], key: str) -> list[Any]:
     return value
 
 
+def as_mapping(value: object, field: str) -> Mapping[str, Any]:
+    """Return ``value`` when it is a JSON object; a response body or a list item, say."""
+    if not isinstance(value, Mapping):
+        raise format_error(field, f"expected an object, got {type(value).__name__}")
+    return value
+
+
 def require_mapping(payload: Mapping[str, Any], key: str) -> Mapping[str, Any]:
     """Read a required JSON object."""
-    value = _missing(payload, key)
-    if not isinstance(value, Mapping):
-        raise format_error(key, f"expected an object, got {type(value).__name__}")
-    return value
+    return as_mapping(_missing(payload, key), key)
 
 
 def require_utc(payload: Mapping[str, Any], key: str) -> datetime:
