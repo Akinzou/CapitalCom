@@ -35,6 +35,7 @@ class CapitalCom:
         timeout: tuple[float, float] = (5.0, 15.0),
         retry: RetryPolicy | None = None,
         confirm_timeout: float = 5.0,
+        encrypted_password: bool = False,
     ) -> None:
         if not api_key or not identifier or not password:
             raise ValueError("api_key, identifier and password must not be empty")
@@ -46,6 +47,7 @@ class CapitalCom:
             timeout=timeout,
             retry=retry,
             confirm_timeout_s=confirm_timeout,
+            encrypted_password=encrypted_password,
         )
         self._closed = False
         self.session = SessionResource(self._core)

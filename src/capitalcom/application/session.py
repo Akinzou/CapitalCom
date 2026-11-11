@@ -4,7 +4,15 @@ import threading
 from dataclasses import dataclass, field
 
 from capitalcom.application.dispatcher import Dispatcher
-from capitalcom.application.login import is_already_active, parse_login, switch_request
+from capitalcom.application.login import (
+    PasswordEncryptor,
+    encrypt_for_login,
+    encryption_key_request,
+    is_already_active,
+    login_request,
+    parse_login,
+    switch_request,
+)
 from capitalcom.application.logs import forget_secret, get_logger, register_secret
 from capitalcom.application.ports import Clock, HttpRequest
 from capitalcom.application.result import Err, Ok, Result
@@ -45,10 +53,17 @@ class SessionTokens:
 class SessionManager:
     """Hands out valid tokens; at most one login is in flight at any time."""
 
-    def __init__(self, dispatcher: Dispatcher, clock: Clock, credentials: Credentials) -> None:
+    def __init__(
+        self,
+        dispatcher: Dispatcher,
+        clock: Clock,
+        credentials: Credentials,
+        encryptor: PasswordEncryptor | None = None,
+    ) -> None:
         self._dispatcher = dispatcher
         self._clock = clock
         self._credentials = credentials
+        self._encryptor = encryptor
         # One lock for check-and-login: eight threads finding an expired session must produce
         # one login, not eight that each rotate the tokens of the others.
         self._lock = threading.Lock()
@@ -149,17 +164,10 @@ class SessionManager:
         return self._login(self._selected_account)
 
     def _login(self, target: str | None) -> Result[SessionTokens, CapitalComError]:
-        request = HttpRequest(
-            "POST",
-            SESSION_PATH,
-            headers={"X-CAP-API-KEY": self._credentials.api_key.reveal()},
-            json={
-                "identifier": self._credentials.identifier,
-                "password": self._credentials.password.reveal(),
-                "encryptedPassword": False,
-            },
-        )
-        sent = self._dispatcher.send(request)
+        request = self._login_request()
+        if isinstance(request, Err):
+            return request
+        sent = self._dispatcher.send(request.value)
         if isinstance(sent, Err):
             return sent
         grant = parse_login(sent.value)
@@ -179,6 +187,23 @@ class SessionManager:
             # an order placed with it would land on the wrong account.
             self._drop()
         return switched
+
+    def _login_request(self) -> Result[HttpRequest, CapitalComError]:
+        api_key = self._credentials.api_key.reveal()
+        password = self._credentials.password.reveal()
+        identifier = self._credentials.identifier
+        if self._encryptor is None:
+            return Ok(login_request(api_key, identifier, password, encrypted=False))
+        # A fresh key for every login, renewals included: the ciphertext embeds the server's
+        # timestamp, and a reused one may be refused as stale.
+        sent = self._dispatcher.send(encryption_key_request(api_key))
+        if isinstance(sent, Err):
+            return sent
+        encrypted = encrypt_for_login(sent.value, password, self._encryptor)
+        if isinstance(encrypted, Err):
+            return encrypted
+        register_secret(encrypted.value)
+        return Ok(login_request(api_key, identifier, encrypted.value, encrypted=True))
 
     def _switch(
         self, tokens: SessionTokens, account_id: str
