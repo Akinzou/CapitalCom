@@ -113,18 +113,19 @@ is the order id, as is `deal_id`.
 - **Error codes.** `ApiError.error_code` keeps suffixes such as `: 74490.85`; splitting them
   would guess a format the documentation does not give.
 
-## Observations (demo, contract tests of stage 2c)
-
-To be filled in from the first CI run of these tests on PR #4.
+## Observations (demo, 2026-11-11, first contract run of stage 2c on PR #4)
 
 | Question | Observed | Pinned by |
 |---|---|---|
-| Open with distances, read levels, amend, close | | `test_position_round_trip` |
-| Does a profit distance count from the open level? | | `test_position_round_trip` |
-| Off-grid size: refused by `validate`, rounded by the server | | `test_position_size_rules` |
-| Rejection reason of an oversized open | | `test_position_size_rules` |
-| Netting: SELL against an open BUY | | `test_netting_open` |
-| Create, amend (keeping `good_till`) and cancel an order | | `test_order_round_trip` |
+| Open with distances, read levels, amend, close | Both levels set; amend to a stop level only left no take-profit (`AMENDED`, `[AMENDED]`); close gave `[FULLY_CLOSED]`, then `get` raised `NotFoundError` | `test_position_round_trip` |
+| Does a distance count from the open level? | Yes: profit and stop both lay 3718.79 from the open level, as sent | `test_position_round_trip` |
+| Off-grid size: refused by `validate`, rounded by the server | `validate` refused 0.00015; without it the server booked 0.00010 and `SizeAdjustedError` carried the position id | `test_position_size_rules` |
+| Rejection reason of an oversized open | `RC_NOT_ENOUGH_MARGIN`, raised as `DealRejectedError` | `test_position_size_rules` |
+| Netting: SELL against an open BUY of the same size | `status` `OPEN` with no affected deals and the requested size; `position_id` is `None`; the BUY is gone | `test_netting_open` |
+| Create, amend (keeping `good_till`) and cancel an order | Listed under `deal_id` with the sent `good_till`; after amend still `GOOD_TILL_DATE` at the new level; cancel gave `[DELETED]` | `test_order_round_trip` |
+
+The first run met BTCUSD closed (around 22:00 UTC) and skipped every trading test; the run
+above is a re-run after the market opened.
 
 ## Consequences
 
