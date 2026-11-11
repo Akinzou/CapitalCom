@@ -14,7 +14,7 @@ from capitalcom.application.login import (
     switch_request,
 )
 from capitalcom.application.logs import forget_secret, get_logger, register_secret
-from capitalcom.application.ports import Clock, HttpRequest
+from capitalcom.application.ports import Clock, HttpRequest, HttpResponse
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.retry import SESSION_PATH
 from capitalcom.domain.errors import AuthenticationError, CapitalComError, ValidationError
@@ -82,7 +82,7 @@ class SessionManager:
     def tokens(self) -> Result[SessionTokens, CapitalComError]:
         """Return current tokens, logging in first when there are none or they are near expiry."""
         with self._lock:
-            return self._valid_tokens()
+            return self._valid_tokens(self._selected_account)
 
     @property
     def current_account_id(self) -> str | None:
@@ -95,7 +95,10 @@ class SessionManager:
         if not account_id:
             return Err(ValidationError("account_id must be a non-empty string"))
         with self._lock:
-            tokens = self._valid_tokens()
+            # Without a live session the login goes straight to ``account_id``: re-applying
+            # the old selection first would cost a request and, if that account can no
+            # longer be selected, would make it impossible to switch away from it.
+            tokens = self._valid_tokens(account_id)
             if isinstance(tokens, Err):
                 return tokens
             if self._current_account == account_id:
@@ -154,20 +157,17 @@ class SessionManager:
             self._tokens = None
         self._current_account = None
 
-    def _valid_tokens(self) -> Result[SessionTokens, CapitalComError]:
+    def _valid_tokens(self, target: str | None) -> Result[SessionTokens, CapitalComError]:
         if self._closed:
             return Err(CapitalComError("client is closed; create a new one"))
         now = self._clock.monotonic()
         if self._tokens is not None and now - self._last_used < IDLE_TIMEOUT_S - RENEW_MARGIN_S:
             return Ok(self._tokens)
         self._drop()
-        return self._login(self._selected_account)
+        return self._login(target)
 
     def _login(self, target: str | None) -> Result[SessionTokens, CapitalComError]:
-        request = self._login_request()
-        if isinstance(request, Err):
-            return request
-        sent = self._dispatcher.send(request.value)
+        sent = self._send_login()
         if isinstance(sent, Err):
             return sent
         grant = parse_login(sent.value)
@@ -181,19 +181,25 @@ class SessionManager:
         if target == self._current_account:
             self._selected_account = target
             return Ok(tokens)
+        # Also reached when the login did not name its account: the PUT then settles it, and
+        # an "already active" answer counts as success.
         switched = self._switch(tokens, target)
         if isinstance(switched, Err):
             # A token for the default account must not reach a caller who chose another one:
-            # an order placed with it would land on the wrong account.
+            # an order placed with it would land on the wrong account. The session is ended
+            # too, so repeated failures do not pile up sessions against the server's limit.
+            self._end(tokens)
             self._drop()
         return switched
 
-    def _login_request(self) -> Result[HttpRequest, CapitalComError]:
+    def _send_login(self) -> Result[HttpResponse, CapitalComError]:
         api_key = self._credentials.api_key.reveal()
         password = self._credentials.password.reveal()
         identifier = self._credentials.identifier
         if self._encryptor is None:
-            return Ok(login_request(api_key, identifier, password, encrypted=False))
+            return self._dispatcher.send(
+                login_request(api_key, identifier, password, encrypted=False)
+            )
         # A fresh key for every login, renewals included: the ciphertext embeds the server's
         # timestamp, and a reused one may be refused as stale.
         sent = self._dispatcher.send(encryption_key_request(api_key))
@@ -202,8 +208,20 @@ class SessionManager:
         encrypted = encrypt_for_login(sent.value, password, self._encryptor)
         if isinstance(encrypted, Err):
             return encrypted
+        # Masked only while the request can be logged: every login makes a new ciphertext, and
+        # keeping each one would grow the redaction registry for as long as the bot runs.
         register_secret(encrypted.value)
-        return Ok(login_request(api_key, identifier, encrypted.value, encrypted=True))
+        try:
+            return self._dispatcher.send(
+                login_request(api_key, identifier, encrypted.value, encrypted=True)
+            )
+        finally:
+            forget_secret(encrypted.value)
+
+    def _end(self, tokens: SessionTokens) -> None:
+        ended = self._dispatcher.send(HttpRequest("DELETE", SESSION_PATH, tokens.headers()))
+        if isinstance(ended, Err):
+            _log.warning("could not end the session after a failed switch: %s", ended.error)
 
     def _switch(
         self, tokens: SessionTokens, account_id: str

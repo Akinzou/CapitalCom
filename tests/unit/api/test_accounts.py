@@ -106,7 +106,9 @@ def test_top_up_on_live_sends_nothing(api: responses.RequestsMock) -> None:
     assert calls(api) == []
 
 
-@pytest.mark.parametrize("amount", [400001, Decimal("-400000.01"), True])
+@pytest.mark.parametrize(
+    "amount", [400001, Decimal("-400000.01"), True, Decimal("NaN"), Decimal("sNaN")]
+)
 def test_top_up_out_of_range_raises(api: responses.RequestsMock, amount: Decimal) -> None:
     with pytest.raises(ValidationError):
         client().accounts.top_up(amount)

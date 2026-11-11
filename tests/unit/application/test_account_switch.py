@@ -86,7 +86,7 @@ def test_relogin_after_401_reapplies_selected_account() -> None:
 
 
 def test_failed_reapply_returns_error_and_hands_out_no_tokens() -> None:
-    script = [login_ok(1), switched(), login_ok(2), rejected("error.invalid.accountId")]
+    script = [login_ok(1), switched(), login_ok(2), rejected("error.invalid.accountId"), OK]
     api, session, transport, clock = make(script)
     session.switch_account("B")
     clock.advance(600)
@@ -96,6 +96,9 @@ def test_failed_reapply_returns_error_and_hands_out_no_tokens() -> None:
     assert result.error.status == 400
     assert all(r.path == "/api/v1/session" for r in transport.requests)
     assert session.current_account_id is None
+    # The session the failed re-apply opened is ended, not left to count against the limit.
+    logout = transport.requests[-1]
+    assert (logout.method, logout.headers["CST"]) == ("DELETE", "cst-2")
 
 
 def test_switch_answered_already_active_counts_as_success() -> None:
@@ -107,6 +110,7 @@ def test_switch_answered_already_active_counts_as_success() -> None:
 def test_switch_answered_401_logs_in_again_targeting_the_account() -> None:
     script = [login_ok(1), response(401, b"{}"), login_ok(2), switched()]
     _, session, transport, _ = make(script)
+    session.tokens()
     assert session.switch_account("B") == Ok(None)
     assert shape(transport.requests[2:]) == [
         ("POST", "/api/v1/session", None),
@@ -131,9 +135,9 @@ def test_failed_switch_keeps_previous_selection() -> None:
     ]
 
 
-def test_login_without_current_account_id_is_response_format_error() -> None:
+def test_login_with_malformed_current_account_id_is_response_format_error() -> None:
     tokens = {"CST": "c", "X-SECURITY-TOKEN": "x"}
-    for body in (b"{}", b'{"currentAccountId": ""}', b"[]", b"not json"):
+    for body in (b'{"currentAccountId": ""}', b'{"currentAccountId": 5}', b"[]", b"not json"):
         result = parse_login(response(200, body, tokens))
         assert isinstance(result, Err), body
         assert isinstance(result.error, ResponseFormatError)
@@ -160,3 +164,46 @@ def test_switch_after_401_needs_no_put_when_login_lands_on_the_target() -> None:
     assert session.switch_account("A") == Ok(None)
     assert [r.method for r in transport.requests] == ["POST", "PUT", "PUT", "POST"]
     assert session.current_account_id == "A"
+
+
+def test_switch_after_expiry_logs_in_straight_to_the_new_account() -> None:
+    script = [login_ok(1), switched(), login_ok(2), switched()]
+    _, session, transport, clock = make(script)
+    session.switch_account("B")
+    clock.advance(600)
+    assert session.switch_account("C") == Ok(None)
+    assert shape(transport.requests[2:]) == [
+        ("POST", "/api/v1/session", None),
+        ("PUT", "/api/v1/session", "C"),
+    ]
+
+
+def test_unreachable_selection_does_not_block_switching_away() -> None:
+    script = [login_ok(1), switched(), login_ok(2), rejected("error.invalid.accountId"), OK]
+    script += [login_ok(3)]
+    api, session, transport, clock = make(script)
+    session.switch_account("B")
+    clock.advance(600)
+    assert isinstance(api.call("GET", "/api/v1/accounts"), Err)
+    assert session.switch_account("A") == Ok(None)
+    assert [r.method for r in transport.requests[5:]] == ["POST"]
+    assert session.current_account_id == "A"
+
+
+def test_login_without_current_account_id_still_logs_in() -> None:
+    tokens = {"CST": "c", "X-SECURITY-TOKEN": "x"}
+    assert parse_login(response(200, b"{}", tokens)) == Ok(LoginGrant("c", "x", None))
+
+
+def test_reapply_when_login_does_not_name_the_account_sends_put() -> None:
+    unnamed = response(200, b"{}", {"CST": "cst-2", "X-SECURITY-TOKEN": "xst-2"})
+    script = [login_ok(1), switched(), unnamed, rejected(SWITCH_ALREADY_ACTIVE), OK]
+    api, session, transport, clock = make(script)
+    session.switch_account("B")
+    clock.advance(600)
+    assert isinstance(api.call("GET", "/api/v1/accounts"), Ok)
+    assert shape(transport.requests[2:4]) == [
+        ("POST", "/api/v1/session", None),
+        ("PUT", "/api/v1/session", "B"),
+    ]
+    assert session.current_account_id == "B"

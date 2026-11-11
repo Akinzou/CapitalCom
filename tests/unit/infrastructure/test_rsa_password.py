@@ -3,9 +3,11 @@
 import base64
 
 import pytest
+from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
+from capitalcom.domain.errors import ValidationError
 from capitalcom.infrastructure.rsa_password import encrypt_password
 
 
@@ -36,3 +38,21 @@ def test_non_rsa_key_raises_value_error() -> None:
     )
     with pytest.raises(ValueError, match="not an RSA public key"):
         encrypt_password("pw", base64.b64encode(der).decode(), 1)
+
+
+def test_unsupported_key_type_raises_value_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def unsupported(data: bytes) -> object:
+        raise UnsupportedAlgorithm("unknown key type")
+
+    monkeypatch.setattr(serialization, "load_der_public_key", unsupported)
+    with pytest.raises(ValueError, match="encryption key"):
+        encrypt_password("pw", base64.b64encode(b"key").decode(), 1)
+
+
+def test_password_too_long_for_the_key_is_validation_error() -> None:
+    private = rsa.generate_private_key(public_exponent=65537, key_size=1024)  # noqa: S505 - small key, short limit
+    der = private.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    with pytest.raises(ValidationError, match="too long"):
+        encrypt_password("x" * 200, base64.b64encode(der).decode(), 1)

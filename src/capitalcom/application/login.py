@@ -27,14 +27,15 @@ class LoginGrant:
 
     cst: str = field(repr=False)
     security_token: str = field(repr=False)
-    account_id: str
+    account_id: str | None
 
 
 def parse_login(response: HttpResponse) -> Result[LoginGrant, CapitalComError]:
-    """Read the session tokens and the account the server logged into.
+    """Read the session tokens and, when the body names it, the account logged into.
 
-    The account id is required, not optional: without it the manager cannot tell whether the
-    session landed on the account the caller selected, and would risk trading on another one.
+    A missing ``currentAccountId`` is tolerated: only a caller who selected an account needs
+    it, and for them the manager sends the switch anyway. A present but malformed one is an
+    error, because it means the body is not what this version understands.
     """
     cst = response.header("CST")
     security_token = response.header("X-SECURITY-TOKEN")
@@ -45,9 +46,11 @@ def parse_login(response: HttpResponse) -> Result[LoginGrant, CapitalComError]:
         body = response.json()
     except ResponseFormatError as error:
         return Err(error)
-    account_id = body.get("currentAccountId") if isinstance(body, Mapping) else None
-    if not isinstance(account_id, str) or not account_id:
-        return Err(_format(response, "login response lacks currentAccountId"))
+    if not isinstance(body, Mapping):
+        return Err(_format(response, "login response is not a JSON object"))
+    account_id = body.get("currentAccountId")
+    if account_id is not None and (not isinstance(account_id, str) or not account_id):
+        return Err(_format(response, f"login response has invalid currentAccountId {account_id!r}"))
     return Ok(LoginGrant(cst, security_token, account_id))
 
 
@@ -80,6 +83,9 @@ def encrypt_for_login(
         return Ok(encryptor(password, key, timestamp))
     except ValueError as error:
         return Err(_format(response, str(error)))
+    except CapitalComError as error:
+        # A local refusal, e.g. a password too long for the key, is not a server fault.
+        return Err(error)
 
 
 def switch_request(auth: Mapping[str, str], account_id: str) -> HttpRequest:

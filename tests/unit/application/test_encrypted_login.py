@@ -6,6 +6,7 @@ import pytest
 
 from capitalcom.api.client import CapitalCom
 from capitalcom.api.composition import build_core
+from capitalcom.application import logs
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.ports import HttpResponse
 from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
@@ -13,7 +14,7 @@ from capitalcom.application.result import Err, Ok
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import SessionManager
 from capitalcom.domain.enums import Environment
-from capitalcom.domain.errors import ResponseFormatError, TransportError
+from capitalcom.domain.errors import ResponseFormatError, TransportError, ValidationError
 from capitalcom.infrastructure import rsa_password
 from tests.fakes import FakeClock, FakeTransport, response
 from tests.unit.application.test_session_api_client import CREDS, login_ok
@@ -26,6 +27,8 @@ def stub_encryptor(password: str, key: str, timestamp: int) -> str:
     CALLS.append((password, key, timestamp))
     if key == "bad":
         raise ValueError("encryption key is not a DER public key")
+    if key == "long":
+        raise ValidationError("password is too long to encrypt with the server key")
     return f"enc-{len(CALLS)}"
 
 
@@ -116,3 +119,20 @@ def test_installed_extra_encrypts_the_login(monkeypatch: pytest.MonkeyPatch) -> 
     login = transport.requests[1].json or {}
     assert login["password"] == "rsa(pw-456,a2V5,1647440528194)"  # noqa: S105 - stub output
     assert login["encryptedPassword"] is True
+
+
+def test_ciphertext_is_forgotten_once_the_login_returns() -> None:
+    session, _ = make([KEY, login_ok(1), KEY, login_ok(2)])
+    first = session.tokens()
+    assert isinstance(first, Ok)
+    session.invalidate(first.value)
+    session.tokens()
+    assert not {"enc-1", "enc-2"} & logs._secrets
+
+
+def test_password_the_encryptor_refuses_is_validation_error() -> None:
+    session, transport = make([response(200, b'{"encryptionKey": "long", "timeStamp": 1}')])
+    result = session.tokens()
+    assert isinstance(result, Err)
+    assert isinstance(result.error, ValidationError)
+    assert len(transport.requests) == 1

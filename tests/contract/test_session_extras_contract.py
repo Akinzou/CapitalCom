@@ -42,7 +42,11 @@ def test_encrypted_password_login(demo_credentials: Credentials) -> None:
         assert core.api.call("GET", "/api/v1/ping").unwrap() == {"status": "OK"}
         log.info("encrypted login accepted")
     finally:
-        core.session.logout().unwrap()
+        # Logged, not raised: this probe pins the RSA details, and a cleanup error raised
+        # here would replace the login failure it is meant to show.
+        logout = core.session.logout()
+        if isinstance(logout, Err):
+            log.warning("logout of the encrypted-login client failed: %s", logout.error)
         core.release()
 
 
@@ -79,8 +83,9 @@ def test_switch_round_trip(demo_core: Core) -> None:
 
 
 def test_login_body_carries_current_account_id(demo_core: Core) -> None:
-    # parse_login requires it; this logs the account ids the demo login offers, without
-    # balances, so a shape change shows up in the CI log.
+    # Without it every renewal of a client that switched accounts costs an extra PUT; the
+    # probe pins that the documented field is sent. Types and statuses only: ids and
+    # balances stay out of the public CI log.
     accounts = AccountsResource(demo_core).list()
     log.info("accounts: %s", json.dumps([(a.account_type, a.status) for a in accounts]))
     assert demo_core.session.current_account_id in {a.account_id for a in accounts}

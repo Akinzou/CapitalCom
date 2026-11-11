@@ -26,8 +26,12 @@ The manager therefore stores the account the caller selected. After each login, 
 holding the login lock, it compares that account with the body's `currentAccountId`. If they
 differ, it sends `PUT /session` before handing out any token. If that switch fails, the new
 tokens are dropped and the error is returned. No caller ever receives a token for the wrong
-account. A login body without `currentAccountId` is a `ResponseFormatError`, because the
-comparison cannot be made without it.
+account. If the login body does not name its account, the switch is sent anyway; an
+"already active" answer then counts as success, so a missing `currentAccountId` costs one
+request instead of failing every login. A failed re-apply also ends the new server session,
+so repeated failures do not pile up sessions against the server's limit. A switch requested
+while no session is live logs in straight to the new account, so an account that can no
+longer be selected never blocks switching away from it.
 
 `PUT /session` is sent through the dispatcher, not `ApiClient`, because `ApiClient` keeps only
 the body. If the answer carries `CST` and `X-SECURITY-TOKEN`, they replace the session tokens.

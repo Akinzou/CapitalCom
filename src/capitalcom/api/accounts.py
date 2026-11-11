@@ -62,7 +62,7 @@ class AccountsResource:
             raise ValidationError("top_up is available on demo accounts only")
         if isinstance(amount, bool) or not isinstance(amount, Decimal | int):
             raise ValidationError(f"amount must be a Decimal or int, got {amount!r}")
-        if abs(Decimal(amount)) > MAX_TOP_UP:
+        if not Decimal(amount).is_finite() or abs(Decimal(amount)) > MAX_TOP_UP:
             raise ValidationError(f"amount must be within ±{MAX_TOP_UP}, got {amount}")
         answer = self._core.api.call(
             "POST", "/api/v1/accounts/topUp", json={"amount": amount}
