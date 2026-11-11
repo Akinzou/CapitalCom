@@ -8,7 +8,8 @@ from capitalcom.api.composition import Core
 from capitalcom.domain.account import Account, AccountPreferences
 from capitalcom.domain.enums import Environment
 from capitalcom.domain.errors import ApiError, ValidationError
-from capitalcom.domain.parsing import as_mapping, require_list
+from capitalcom.domain.parsing import as_mapping, check_success, require_list
+from capitalcom.domain.request_values import caller_quantity
 
 # Documented bounds of POST /accounts/topUp; checked locally so a typo fails before it
 # spends one of the 100 top-ups a demo account gets per day.
@@ -50,8 +51,7 @@ class AccountsResource:
         if not body:
             raise ValidationError("give leverages, hedging_mode or both")
         answer = self._core.api.call("PUT", "/api/v1/accounts/preferences", json=body).unwrap()
-        if not isinstance(answer, Mapping) or answer.get("status") != "SUCCESS":
-            raise ApiError(200, None, f"preferences not updated: {answer!r}")
+        check_success(answer, "preferences not updated")
 
     def top_up(self, amount: Decimal | int) -> None:
         """Add ``amount`` (negative to withdraw) to a demo account's balance.
@@ -60,9 +60,7 @@ class AccountsResource:
         """
         if self._core.environment is not Environment.DEMO:
             raise ValidationError("top_up is available on demo accounts only")
-        if isinstance(amount, bool) or not isinstance(amount, Decimal | int):
-            raise ValidationError(f"amount must be a Decimal or int, got {amount!r}")
-        if not Decimal(amount).is_finite() or abs(Decimal(amount)) > MAX_TOP_UP:
+        if abs(caller_quantity(amount, "amount")) > MAX_TOP_UP:
             raise ValidationError(f"amount must be within ±{MAX_TOP_UP}, got {amount}")
         answer = self._core.api.call(
             "POST", "/api/v1/accounts/topUp", json={"amount": amount}

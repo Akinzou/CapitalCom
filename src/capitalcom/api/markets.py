@@ -9,7 +9,7 @@ from capitalcom.domain.errors import NotFoundError, ValidationError
 from capitalcom.domain.market_details import MarketDetails, PipScale
 from capitalcom.domain.markets import Market, MarketNode, NodeContents, markets_from, nodes_from
 from capitalcom.domain.parsing import as_mapping, require_list
-from capitalcom.domain.request_values import comma_list, path_segment
+from capitalcom.domain.request_values import bounded_int, comma_list, path_segment
 
 # Documented limits: GET /marketnavigation/{nodeId} takes limit 1..500, GET /markets at
 # most 50 epics; the server answers more with a 400.
@@ -33,11 +33,7 @@ class MarketsResource:
         path = f"/api/v1/marketnavigation/{path_segment(node_id, 'node_id')}"
         params: dict[str, str] = {}
         if limit is not None:
-            if isinstance(limit, bool) or not isinstance(limit, int):
-                raise ValidationError(f"limit must be an int, got {limit!r}")
-            if not 1 <= limit <= MAX_NODE_LIMIT:
-                raise ValidationError(f"limit must be within 1..{MAX_NODE_LIMIT}, got {limit}")
-            params["limit"] = str(limit)
+            params["limit"] = str(bounded_int(limit, "limit", 1, MAX_NODE_LIMIT))
         return NodeContents.from_api(self._core.api.call("GET", path, params=params).unwrap())
 
     def search(self, term: str) -> tuple[Market, ...]:
@@ -75,14 +71,14 @@ class MarketsResource:
         The pip scale is ``None`` on every item: one request cannot fetch it. The server
         silently drops unknown or wrong-case epics; they raise ``NotFoundError`` here.
         """
-        joined = comma_list(epics, "epics", max_items=MAX_EPICS)
-        body = self._core.api.call("GET", "/api/v1/markets", params={"epics": joined}).unwrap()
+        wanted = comma_list(epics, "epics", max_items=MAX_EPICS)
+        params = {"epics": ",".join(wanted)}
+        body = self._core.api.call("GET", "/api/v1/markets", params=params).unwrap()
         items = require_list(as_mapping(body, "markets"), "marketDetails")
         found = {
             parsed.instrument.epic: parsed
             for parsed in (MarketDetails.from_api(item) for item in items)
         }
-        wanted = joined.split(",")
         missing = [epic for epic in wanted if epic not in found]
         if missing:
             raise NotFoundError(200, None, f"no market for epics: {missing}")

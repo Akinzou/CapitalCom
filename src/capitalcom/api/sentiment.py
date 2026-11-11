@@ -27,14 +27,13 @@ class SentimentResource:
         One unknown id fails the whole call with ``NotFoundError``; the server does not
         answer for the others. An id missing from a successful answer raises the same way.
         """
-        joined = comma_list(market_ids, "market_ids", max_items=None)
+        wanted = comma_list(market_ids, "market_ids", max_items=None)
         body = self._core.api.call(
-            "GET", "/api/v1/clientsentiment", params={"marketIds": joined}
+            "GET", "/api/v1/clientsentiment", params={"marketIds": ",".join(wanted)}
         ).unwrap()
         items = require_list(as_mapping(body, "clientsentiment"), "clientSentiments")
         parsed = (Sentiment.from_api(as_mapping(item, "clientSentiments[]")) for item in items)
         found = {sentiment.market_id: sentiment for sentiment in parsed}
-        wanted = joined.split(",")
         missing = [market_id for market_id in wanted if market_id not in found]
         if missing:
             raise NotFoundError(200, None, f"no sentiment for market ids: {missing}")

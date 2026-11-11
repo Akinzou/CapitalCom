@@ -6,10 +6,11 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from capitalcom.domain.api_time import to_api_time
+from capitalcom.domain.api_time import window_params
 from capitalcom.domain.enums import Resolution
 from capitalcom.domain.errors import ValidationError
 from capitalcom.domain.parsing import require_decimal, require_mapping, require_utc
+from capitalcom.domain.request_values import bounded_int
 
 # GET /prices documents max 1..1000 (default 10); the server answers others with a 400.
 MAX_BARS = 1000
@@ -72,17 +73,9 @@ def price_params(
                 f"resolution must be one of {names}, got {resolution!r}"
             ) from None
     if limit is not None:
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_BARS:
-            raise ValidationError(f"limit must be an int within 1..{MAX_BARS}, got {limit!r}")
-        params["max"] = str(limit)
+        params["max"] = str(bounded_int(limit, "limit", 1, MAX_BARS))
     elif start is not None or end is not None:
         # Without max the server stops at its default of 10 bars, which would cut a window
         # short with no sign of it; the documented maximum is asked for instead.
         params["max"] = str(MAX_BARS)
-    if start is not None:
-        params["from"] = to_api_time(start, "start")
-    if end is not None:
-        params["to"] = to_api_time(end, "end")
-    if start is not None and end is not None and start > end:
-        raise ValidationError("start must not be after end")
-    return params
+    return params | window_params(start, end)

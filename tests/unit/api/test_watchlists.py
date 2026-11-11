@@ -119,3 +119,9 @@ def test_add_market_refuses_a_blank_epic(api: responses.RequestsMock, epic: obje
     with pytest.raises(ValidationError, match="epic"):
         client().watchlists.add_market("123", epic)  # type: ignore[arg-type]
     assert len(api.calls) == 0
+
+
+def test_create_refuses_a_blank_name(api: responses.RequestsMock) -> None:
+    with pytest.raises(ValidationError, match="name"):
+        client().watchlists.create("   ")
+    assert len(api.calls) == 0

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
-from capitalcom.domain.api_time import to_api_time
+from capitalcom.domain.api_time import window_params
 from capitalcom.domain.errors import ValidationError
 from capitalcom.domain.parsing import optional_str, require_decimal, require_str, require_utc
 
@@ -92,16 +92,9 @@ def history_params(
         if start is not None or end is not None:
             raise ValidationError("last_period cannot be combined with start or end")
         return {"lastPeriod": str(_whole_seconds(last_period, max_span))}
-    params: dict[str, str] = {}
-    if start is not None:
-        params["from"] = to_api_time(start, "start")
-    if end is not None:
-        params["to"] = to_api_time(end, "end")
-    if start is not None and end is not None:
-        if start > end:
-            raise ValidationError(f"start {start} is after end {end}")
-        if max_span is not None and end - start > max_span:
-            raise ValidationError(f"the range from start to end must not exceed {max_span}")
+    params = window_params(start, end)
+    if start is not None and end is not None and max_span is not None and end - start > max_span:
+        raise ValidationError(f"the range from start to end must not exceed {max_span}")
     return params
 
 

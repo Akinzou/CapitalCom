@@ -16,9 +16,9 @@ _CREATED = {"SUCCESS": True, "SUCCESS_NOT_ALL_INSTRUMENTS_ADDED": False}
 
 
 def check_name(name: object) -> str:
-    """Return ``name`` when it is a string of 1..20 characters."""
-    if not isinstance(name, str) or not 1 <= len(name) <= MAX_NAME_LENGTH:
-        raise ValidationError(f"name must be a string of 1..{MAX_NAME_LENGTH} characters")
+    """Return ``name`` when it is a non-blank string of 1..20 characters."""
+    if not isinstance(name, str) or not name.strip() or len(name) > MAX_NAME_LENGTH:
+        raise ValidationError(f"name must be a non-blank string of 1..{MAX_NAME_LENGTH} characters")
     return name
 
 

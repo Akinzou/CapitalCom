@@ -4,9 +4,8 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 from capitalcom.api.composition import Core
-from capitalcom.domain.errors import ApiError
 from capitalcom.domain.markets import Market, markets_from
-from capitalcom.domain.parsing import as_mapping, require_list
+from capitalcom.domain.parsing import as_mapping, check_success, require_list
 from capitalcom.domain.request_values import comma_list, path_segment
 from capitalcom.domain.watchlist import Watchlist, WatchlistCreation, check_name
 
@@ -35,7 +34,7 @@ class WatchlistsResource:
         given = epics if isinstance(epics, str) else list(epics)
         # A string is passed on so comma_list refuses it; an empty list sends no key.
         if isinstance(given, str) or given:
-            body["epics"] = comma_list(given, "epics", max_items=None).split(",")
+            body["epics"] = list(comma_list(given, "epics", max_items=None))
         answer = self._core.api.call("POST", _ROOT, json=body).unwrap()
         return WatchlistCreation.from_api(as_mapping(answer, "watchlists"))
 
@@ -66,5 +65,4 @@ class WatchlistsResource:
 
     def _confirm(self, method: str, path: str, json: Mapping[str, Any] | None = None) -> None:
         answer = self._core.api.call(method, path, json=json).unwrap()
-        if not isinstance(answer, Mapping) or answer.get("status") != "SUCCESS":
-            raise ApiError(200, None, f"watchlist not changed: {answer!r}")
+        check_success(answer, "watchlist not changed")

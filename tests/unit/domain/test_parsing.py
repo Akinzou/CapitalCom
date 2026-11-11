@@ -5,9 +5,10 @@ from decimal import Decimal
 
 import pytest
 
-from capitalcom.domain.api_time import to_api_time
-from capitalcom.domain.errors import ResponseFormatError, ValidationError
+from capitalcom.domain.api_time import to_api_time, window_params
+from capitalcom.domain.errors import ApiError, ResponseFormatError, ValidationError
 from capitalcom.domain.parsing import (
+    check_success,
     epoch_ms_to_utc,
     optional_decimal,
     optional_str,
@@ -101,3 +102,23 @@ def test_to_api_time_sends_utc_without_offset() -> None:
 def test_to_api_time_rejects_naive_datetime() -> None:
     with pytest.raises(ValidationError, match="start: datetime must be timezone-aware"):
         to_api_time(datetime(2022, 4, 1), "start")  # noqa: DTZ001 - the naive value is the case
+
+
+def test_window_params_send_only_the_bounds_given() -> None:
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    assert window_params(None, t0) == {"to": "2026-01-01T00:00:00"}
+    assert window_params(t0, None) == {"from": "2026-01-01T00:00:00"}
+    assert window_params(None, None) == {}
+
+
+def test_window_params_refuse_a_start_after_the_end() -> None:
+    t0 = datetime(2026, 1, 1, tzinfo=UTC)
+    with pytest.raises(ValidationError, match="is after end"):
+        window_params(t0 + timedelta(seconds=1), t0)
+
+
+def test_check_success_accepts_only_a_success_status() -> None:
+    check_success({"status": "SUCCESS"}, "x")  # does not raise
+    for answer in ({"status": "FAIL"}, None, ["SUCCESS"]):
+        with pytest.raises(ApiError, match="x: "):
+            check_success(answer, "x")

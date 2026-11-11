@@ -9,7 +9,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from capitalcom.domain.errors import ResponseFormatError
+from capitalcom.domain.errors import ApiError, ResponseFormatError
 
 # Parsers only ever see bodies of successful responses; a non-2xx body is turned into an
 # ApiError before any payload is parsed.
@@ -148,3 +148,13 @@ def epoch_ms_to_utc(value: object, field: str) -> datetime:
 
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def check_success(answer: object, what: str) -> None:
+    """Raise ``ApiError`` unless a 200 answer reports ``status`` ``SUCCESS``.
+
+    The server answers some refused changes with 200 and another status, so a 200 alone is
+    not taken as proof that the change happened.
+    """
+    if not isinstance(answer, Mapping) or answer.get("status") != "SUCCESS":
+        raise ApiError(_SUCCESS_STATUS, None, f"{what}: {answer!r}")

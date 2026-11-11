@@ -17,20 +17,7 @@ from capitalcom.domain.parsing import (
     require_str,
     to_decimal,
 )
-
-
-def caller_quantity(value: object, field: str) -> Decimal:
-    """Return a caller-given amount as ``Decimal``; bools, floats and non-finite values raise.
-
-    A float is refused because it may already carry a binary rounding error, and a bool
-    because it is an int that is never meant as a quantity.
-    """
-    if isinstance(value, bool) or not isinstance(value, Decimal | int):
-        raise ValidationError(f"{field} must be a Decimal or int, got {value!r}")
-    result = Decimal(value)
-    if not result.is_finite():
-        raise ValidationError(f"{field} must be finite, got {value!r}")
-    return result
+from capitalcom.domain.request_values import caller_quantity
 
 
 @dataclass(frozen=True, slots=True)

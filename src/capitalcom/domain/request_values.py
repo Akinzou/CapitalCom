@@ -1,6 +1,7 @@
-"""Rules for caller values that end up in a URL, checked before anything is sent."""
+"""Rules for caller values sent in a request, checked before anything is sent."""
 
 from collections.abc import Iterable
+from decimal import Decimal
 from urllib.parse import quote
 
 from capitalcom.domain.errors import ValidationError
@@ -18,8 +19,8 @@ def path_segment(value: object, field: str) -> str:
     return quote(value, safe="")
 
 
-def comma_list(values: Iterable[str], field: str, *, max_items: int | None) -> str:
-    """Join ids for a comma-separated query parameter, de-duplicated in order.
+def comma_list(values: Iterable[str], field: str, *, max_items: int | None) -> tuple[str, ...]:
+    """Ids for a comma-separated query parameter, de-duplicated in order; callers join them.
 
     A bare string is refused because iterating it would send one id per character. An empty
     list is refused because the server answers an empty parameter with a 400 or a 500.
@@ -37,4 +38,25 @@ def comma_list(values: Iterable[str], field: str, *, max_items: int | None) -> s
         raise ValidationError(f"{field} must not be empty")
     if max_items is not None and len(items) > max_items:
         raise ValidationError(f"{field}: at most {max_items} items, got {len(items)}")
-    return ",".join(items)
+    return tuple(items)
+
+
+def caller_quantity(value: object, field: str) -> Decimal:
+    """Return a caller-given amount as ``Decimal``; bools, floats and non-finite values raise.
+
+    A float is refused because it may already carry a binary rounding error, and a bool
+    because it is an int that is never meant as a quantity.
+    """
+    if isinstance(value, bool) or not isinstance(value, Decimal | int):
+        raise ValidationError(f"{field} must be a Decimal or int, got {value!r}")
+    result = Decimal(value)
+    if not result.is_finite():
+        raise ValidationError(f"{field} must be finite, got {value!r}")
+    return result
+
+
+def bounded_int(value: object, field: str, low: int, high: int) -> int:
+    """Return ``value`` when it is an int within ``low..high``; a bool is refused."""
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        raise ValidationError(f"{field} must be an int within {low}..{high}, got {value!r}")
+    return value
