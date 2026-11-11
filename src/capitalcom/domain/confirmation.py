@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Any
 
 from capitalcom.domain.enums import Direction
-from capitalcom.domain.parsing import format_error, to_decimal, to_utc
+from capitalcom.domain.parsing import format_error, optional_decimal, optional_str, optional_utc
 
 
 class Outcome(Enum):
@@ -52,18 +52,18 @@ class DealConfirmation:
             raise format_error("dealReference", "missing")
         return cls(
             deal_reference=reference,
-            deal_id=_optional_str(payload, "dealId"),
-            deal_status=_optional_str(payload, "dealStatus"),
-            status=_optional_str(payload, "status"),
-            epic=_optional_str(payload, "epic"),
+            deal_id=optional_str(payload, "dealId"),
+            deal_status=optional_str(payload, "dealStatus"),
+            status=optional_str(payload, "status"),
+            epic=optional_str(payload, "epic"),
             direction=_direction(payload.get("direction")),
-            level=_optional_decimal(payload, "level"),
-            size=_optional_decimal(payload, "size"),
+            level=optional_decimal(payload, "level"),
+            size=optional_decimal(payload, "size"),
             # The rejection shape is undocumented; both keys have been seen in IG-style APIs.
             # The stage 1b contract test pins which one Capital.com uses.
-            reason=_optional_str(payload, "reason") or _optional_str(payload, "rejectReason"),
+            reason=optional_str(payload, "reason") or optional_str(payload, "rejectReason"),
             affected_deals=_affected_deals(payload.get("affectedDeals")),
-            date=None if payload.get("date") is None else to_utc(payload["date"], "date"),
+            date=optional_utc(payload, "date"),
             raw=payload,
         )
 
@@ -90,20 +90,6 @@ class DealConfirmation:
         return self.outcome is Outcome.ACCEPTED
 
 
-def _optional_str(payload: Mapping[str, Any], key: str) -> str | None:
-    value = payload.get(key)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise format_error(key, f"expected a string, got {type(value).__name__}")
-    return value
-
-
-def _optional_decimal(payload: Mapping[str, Any], key: str) -> Decimal | None:
-    value = payload.get(key)
-    return None if value is None else to_decimal(value, key)
-
-
 def _direction(value: object) -> Direction | None:
     if value is None:
         return None
@@ -124,8 +110,8 @@ def _affected_deals(value: object) -> tuple[AffectedDeal, ...]:
     for item in value:
         if not isinstance(item, Mapping):
             raise format_error("affectedDeals", "expected objects")
-        deal_id = _optional_str(item, "dealId")
+        deal_id = optional_str(item, "dealId")
         if deal_id is None:
             raise format_error("affectedDeals.dealId", "missing")
-        deals.append(AffectedDeal(deal_id, _optional_str(item, "status") or ""))
+        deals.append(AffectedDeal(deal_id, optional_str(item, "status") or ""))
     return tuple(deals)
