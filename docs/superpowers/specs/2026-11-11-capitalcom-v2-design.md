@@ -1,6 +1,6 @@
 # capitalcom 2.0 — Design
 
-Status: awaiting owner approval · Date: 2026-11-11 · Branch: `rewrite/v2-design`
+Status: approved by owner 2026-11-11 · Date: 2026-11-11 · Branch: `rewrite/v2-design`
 
 ## 1. Intent
 
@@ -79,7 +79,8 @@ src/capitalcom/
 ```
 
 Dependencies point inward only: `api -> application -> domain` and
-`infrastructure -> application`. A test fails the build on any import cycle or outward import.
+`infrastructure -> application`. `api` is also the composition root, so `api -> infrastructure`
+is allowed (ADR 0003). A test fails the build on any import cycle or outward import.
 
 ### 6.1 Public API shape (new)
 
@@ -242,9 +243,11 @@ A golden test suite pins every row of the table above against recorded HTTP fixt
    - Add the tooling and CI gates.
    - Fix the license metadata.
    - Add `docs/adr/`.
-1. Core: domain values, errors, `Result`, ports and adapters, session manager, rate limiter,
-   deal confirmer.
-2. REST resources: accounts and history; positions and working orders; markets, prices, and
+1. Core: domain values, errors, `Result`, ports and adapters, session manager (plain login,
+   keepalive, logout), rate limiter, deal confirmer. The partial-close probe drives the core
+   directly on BTCUSD, sized from its dealing rules, and always closes what it opened.
+2. REST resources: session extras (RSA login, account switch, `GET /session`, `/time`);
+   accounts and history; positions and working orders; markets, prices, and
    sentiment; watchlists.
 3. Legacy layer, golden compatibility suite, and CHANGELOG.
 4. Streaming:
