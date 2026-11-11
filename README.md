@@ -1,4 +1,4 @@
-# CapitalCom  [![PyPI Publish](https://github.com/Akinzou/CapitalCom/actions/workflows/python-publish.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/python-publish.yml) ![PyPI](https://img.shields.io/pypi/v/capitalcom) ![Python](https://img.shields.io/badge/python-3.8%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-lightgrey.svg) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
+# CapitalCom  [![CI](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml) ![PyPI](https://img.shields.io/pypi/v/capitalcom) ![Python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-lightgrey.svg) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
 [![Discord](https://img.shields.io/badge/Join_us_on-Discord-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/BARYa55KS8)
 
 
