@@ -14,10 +14,11 @@ from capitalcom.domain.secret import Secret
 from tests.fakes import FakeClock, FakeTransport, response
 
 CREDS = Credentials(Secret("key-123"), "me@example.com", Secret("pw-456"))
+LOGIN_BODY = b'{"currentAccountId": "A"}'
 
 
 def login_ok(n: int = 1) -> HttpResponse:
-    return response(200, b"{}", {"CST": f"cst-{n}", "X-SECURITY-TOKEN": f"xst-{n}"})
+    return response(200, LOGIN_BODY, {"CST": f"cst-{n}", "X-SECURITY-TOKEN": f"xst-{n}"})
 
 
 def make(
