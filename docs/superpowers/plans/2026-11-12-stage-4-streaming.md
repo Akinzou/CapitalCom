@@ -52,7 +52,7 @@
 
 **Files:**
 - Create: `src/capitalcom/domain/streaming.py`, `src/capitalcom/domain/subscriptions.py`
-- Modify: `src/capitalcom/domain/errors.py`
+- Modify: `src/capitalcom/domain/errors.py`, `src/capitalcom/domain/enums.py`
 - Test: `tests/unit/domain/test_streaming.py`, `tests/unit/domain/test_subscriptions.py`
 
 **Interfaces:**
@@ -67,6 +67,7 @@
   - `remove_quotes(epics) -> tuple[str, ...]` and `remove_ohlc(epics, resolutions | None, candle_types | None) -> tuple[OhlcKey, ...]`, which return the keys actually removed;
   - `discard(keys)` and the read-only `quotes`, `ohlc`.
   The limits and input checks raise `ValidationError`.
+- Produces, in `enums.py`: `STREAM_URL` and `Environment.stream_url`, the same constant for DEMO and LIVE (P3).
 - Produces, in `errors.py`:
   - `StreamError(TransportError)`;
   - `SubscriptionError(CapitalComError)`, with `__init__(self, refused: Mapping[str, str], error_code: str | None)` and properties `refused` and `error_code`. The message lists the keys and the server's texts, which carry no tokens.
@@ -83,6 +84,7 @@
   - `test_remove_ohlc_none_means_all_resolutions_and_types`.
   - `test_remove_unsubscribed_epic_raises`.
   - `test_subscription_error_carries_refused_keys`.
+  - `test_stream_url_is_pinned_for_both_environments`.
 - [ ] **Step 2: Run** `pytest tests/unit/domain/test_streaming.py tests/unit/domain/test_subscriptions.py -v`. Expected: FAIL with `ModuleNotFoundError: capitalcom.domain.streaming`.
 - [ ] **Step 3: Implement** the interfaces above. Reuse the existing `Resolution` enum and `parsing.py` helpers (`epoch_ms_to_utc`, `require_decimal`).
 - [ ] **Step 4: Run** the same tests. Expected: PASS. Then run the full suite.
@@ -251,7 +253,7 @@
 - Modify: `CHANGELOG.md`
 
 - [ ] **Step 1: Write the contract test** `test_stream_round_trip`, marked `contract`. It uses the `demo_credentials` fixture and `CapitalCom(..., environment=Environment.DEMO)`, and it:
-  - asserts `cc.session.info().stream_endpoint.rstrip("/") + "/connect" == STREAM_URL`;
+  - asserts `cc.session.info().stream_endpoint.rstrip("/") + "/connect" == Environment.DEMO.stream_url`;
   - subscribes BTCUSD quotes and `MINUTE` OHLC;
   - receives at least one `Quote` and one `Candle` within 90 s;
   - unsubscribes both and closes.
