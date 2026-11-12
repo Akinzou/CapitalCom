@@ -11,6 +11,10 @@ All notable changes to this project are documented in this file. The format foll
 - **`OutcomeUnknownError` says why in two more cases.** After a network failure that
   followed the send, or a 5xx answer to a trade or another change, the error now carries
   that failure as its `__cause__`, shown in the traceback, as the other cases already did.
+- **Reads no longer wait behind a held-back login or queued trades.** With one client shared
+  by several threads, a read waited up to a second when another thread's login was held
+  back by the one-login-per-second limit, or when trades were queued one per 0.1 s. It now
+  takes the first slot the overall limit of 10 requests per second allows.
 
 ### Documentation
 

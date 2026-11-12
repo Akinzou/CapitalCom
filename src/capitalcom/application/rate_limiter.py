@@ -1,8 +1,8 @@
 """Client-side throttling to Capital.com's published request limits."""
 
+import bisect
 import threading
-from collections import deque
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from enum import Enum
 
 from capitalcom.application.ports import Clock
@@ -20,27 +20,57 @@ class SlidingWindow:
     """At most ``limit`` sends inside any ``window_s`` span, counted at send time.
 
     A token bucket of capacity N refilling at N/s lets almost 2N requests through in the
-    first second; Capital.com counts per second, so the bucket drew 429s on bursts. Send
-    times are recorded in non-decreasing order, so callers keep their FIFO order per window.
+    first second; Capital.com counts per second, so the bucket drew 429s on bursts. Bookings
+    may lie in the future and a new one may land before them: 2.0.0 booked in order, so a read
+    queued up to a second behind a login that SESSION held back while GENERAL had room.
     Not thread-safe on its own; ``RateLimiter`` holds the lock.
     """
 
     def __init__(self, limit: int, window_s: float) -> None:
+        self._limit = limit
         self._window_s = window_s
-        self._times: deque[float] = deque(maxlen=limit)
+        self._times: list[float] = []  # sorted
 
-    def earliest(self, t: float) -> float:
-        """Earliest send time at or after ``t`` that keeps this window within its limit."""
-        if not self._times:
-            return t
-        t = max(t, self._times[-1])
-        if len(self._times) == self._times.maxlen:
-            t = max(t, self._times[0] + self._window_s)
-        return t
+    def forget_before(self, now: float) -> None:
+        """Drop bookings that no send at or after ``now`` can share a span with."""
+        del self._times[: bisect.bisect_right(self._times, now - self._window_s)]
+
+    def candidates(self, now: float) -> list[float]:
+        """Where a free slot can begin: a booking, or a window after one."""
+        return [t for s in self._times for t in (s, s + self._window_s) if t >= now]
+
+    def fits(self, t: float) -> bool:
+        """Whether a send at ``t`` keeps any ``limit + 1`` consecutive sends ``window_s`` apart."""
+        at = bisect.bisect_right(self._times, t)
+        times = [*self._times[:at], t, *self._times[at:]]
+        n = self._limit
+        # Only spans holding the new send can break; ``first + window_s <= last`` is the very
+        # sum a candidate was built from, so float rounding cannot reject the slot it found.
+        for first in range(max(0, at - n), min(at, len(times) - 1 - n) + 1):
+            if times[first] + self._window_s > times[first + n]:
+                return False
+        return True
 
     def record(self, t: float) -> None:
-        """Count a send at ``t``; the oldest send falls out once the window is full."""
-        self._times.append(t)
+        """Count a send at ``t``."""
+        bisect.insort(self._times, t)
+
+
+def earliest(windows: Sequence[SlidingWindow], now: float) -> float:
+    """The earliest send time at or after ``now`` that every window in ``windows`` allows.
+
+    Out of order, one window's allowed times are no longer "from some point on", so the
+    latest of the per-window answers could fail another window; every window's candidates are
+    tried against all of them. A send a window after the latest booking always fits, so the
+    search ends.
+    """
+    for window in windows:
+        window.forget_before(now)
+    options = sorted({now, *(t for window in windows for t in window.candidates(now))})
+    for t in options:
+        if all(window.fits(t) for window in windows):
+            return t
+    raise AssertionError("unreachable: a window after the latest booking always fits")
 
 
 _TRADE_PATHS = frozenset({"/api/v1/positions", "/api/v1/workingorders"})
@@ -80,10 +110,9 @@ class RateLimiter:
         with self._lock:
             now = self._clock.monotonic()
             windows = [self._windows[kind] for kind in classify(method, path)]
-            # Each window answers max(t, its own bound), so the latest answer is valid in every
-            # window at once. That same time is recorded in all of them, which keeps a login
+            # The one time valid in every window is recorded in all of them, which keeps a login
             # delayed by SESSION counted in GENERAL when it is really sent.
-            send_at = max(w.earliest(now) for w in windows)
+            send_at = earliest(windows, now)
             for window in windows:
                 window.record(send_at)
         # Sleeping outside the lock lets other threads book their own later times meanwhile.
