@@ -4,6 +4,19 @@ All notable changes to this project are documented in this file. The format foll
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **`OutcomeUnknownError` says why in two more cases.** After a network failure that
+  followed the send, or a 5xx answer to a trade or another change, the error now carries
+  that failure as its `__cause__`, shown in the traceback, as the other cases already did.
+
+### Documentation
+
+- The streaming guide says that the stream stays open after `ResponseFormatError`, so a
+  reader catches it and keeps reading.
+
 ## [2.0.0] — 2026-11-12
 
 ### Added
@@ -140,4 +153,5 @@ it settles a behaviour you can rely on.
 - **Deprecation link.** The `CapitalClient` deprecation warning points to the migration guide
   on the documentation site.
 
+[Unreleased]: https://github.com/Akinzou/CapitalCom/compare/v2.0.0...HEAD
 [2.0.0]: https://github.com/Akinzou/CapitalCom/releases/tag/v2.0.0

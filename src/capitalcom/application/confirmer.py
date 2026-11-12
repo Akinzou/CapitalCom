@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 
 from capitalcom.application.api_client import ApiClient
+from capitalcom.application.error_mapping import outcome_unknown
 from capitalcom.application.json_codec import path_segment
 from capitalcom.application.ports import Clock
 from capitalcom.application.result import Err, Ok, Result
@@ -13,7 +14,6 @@ from capitalcom.domain.errors import (
     ConfirmationTimeoutError,
     DealRejectedError,
     NotFoundError,
-    OutcomeUnknownError,
     ResponseFormatError,
 )
 from capitalcom.domain.parsing import format_error
@@ -37,9 +37,7 @@ def _unknown(path: str, cause: CapitalComError) -> Err[CapitalComError]:
     Returning the raw cause would be wrong: a connect-timeout TransportError means "never
     sent" for the poll, and a caller could read it as permission to resend the trade.
     """
-    error = OutcomeUnknownError("GET", path)
-    error.__cause__ = cause
-    return Err(error)
+    return Err(outcome_unknown("GET", path, cause))
 
 
 class DealConfirmer:

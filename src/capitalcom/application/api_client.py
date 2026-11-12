@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from capitalcom.application.dispatcher import Dispatcher
+from capitalcom.application.error_mapping import outcome_unknown
 from capitalcom.application.ports import HttpRequest
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.retry import is_retry_safe
@@ -11,7 +12,6 @@ from capitalcom.application.session import SessionManager
 from capitalcom.domain.errors import (
     AuthenticationError,
     CapitalComError,
-    OutcomeUnknownError,
     ResponseFormatError,
 )
 
@@ -57,7 +57,5 @@ class ApiClient:
                     return Err(error)
                 # A 2xx says the server took a request that changes state, as with a 5xx on
                 # one; an unreadable body must not read as "nothing happened" (ADR 0006).
-                unknown = OutcomeUnknownError(method, path)
-                unknown.__cause__ = error
-                return Err(unknown)
+                return Err(outcome_unknown(method, path, error))
         raise AssertionError("unreachable: the second attempt always returns")

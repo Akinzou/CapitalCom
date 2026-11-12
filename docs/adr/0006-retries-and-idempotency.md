@@ -51,6 +51,9 @@ issues new tokens, and a repeated logout is answered 401, which logout treats as
   real path for the caller.
 - Once a deal is submitted, any failure while polling `/confirms` other than "not ready yet"
   becomes `OutcomeUnknownError` (with the cause chained), never the raw poll error.
+- Every `OutcomeUnknownError` is built by one helper (`outcome_unknown`) that chains its
+  cause. Without the cause a caller cannot tell a timeout after the send from a 5xx answer,
+  and 2.0.0 dropped it in the dispatcher's two cases while the other sites kept it.
 - A request body that cannot be encoded exactly fails with `ValidationError` before a
   rate-limit slot is spent.
 - Rate limiting is client-side sliding windows: GENERAL (10 sends in any 1 s), TRADE (1 in any

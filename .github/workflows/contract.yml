@@ -53,6 +53,9 @@ jobs:
 
   # The released package, not the checkout: installs the given version from PyPI into a clean
   # venv and runs the README quick start and the 1.x round trip against demo (spec section 7).
+  # Both go through their contract tests, which close whatever a run leaves open; with
+  # CAPITAL_SMOKE set a closed market fails the job instead of skipping it, because a smoke
+  # that skipped would be green without having traded.
   smoke:
     if: inputs.pypi_version
     runs-on: ubuntu-latest
@@ -80,6 +83,7 @@ jobs:
           CAPITAL_API_KEY: ${{ secrets.CAPITAL_API_KEY }}
           CAPITAL_IDENTIFIER: ${{ secrets.CAPITAL_IDENTIFIER }}
           CAPITAL_PASSWORD: ${{ secrets.CAPITAL_PASSWORD }}
-        run: |
-          "$RUNNER_TEMP/venv/bin/python" docs/examples/quickstart.py
-          "$RUNNER_TEMP/venv/bin/python" -m pytest -p no:cacheprovider -m contract -v tests/contract/test_legacy_contract.py
+          CAPITAL_SMOKE: "1"
+        run: >-
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -p no:cacheprovider -m contract -v
+          tests/contract/test_quickstart_contract.py tests/contract/test_legacy_contract.py

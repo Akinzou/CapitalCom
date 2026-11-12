@@ -100,6 +100,12 @@ A repeated logout is answered 401, which counts as logged out. Sources:
 - After a deal is submitted, any failure while waiting for its confirmation, other than
   "not ready yet", becomes `OutcomeUnknownError` with the cause chained, never the raw error
   of the poll (`tests/unit/application/test_confirmer.py`).
+- Every `OutcomeUnknownError` carries what made the outcome unknown as its `__cause__`: the
+  network failure after the send or the 5xx answer (`tests/unit/application/test_dispatcher.py`),
+  the unreadable body (`tests/unit/application/test_session_api_client.py`,
+  `tests/unit/api/test_positions.py`) or the failed poll
+  (`tests/unit/application/test_confirmer.py`). Like any Python exception's, the cause does
+  not survive pickling.
 
 ## Recipes
 

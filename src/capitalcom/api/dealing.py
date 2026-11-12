@@ -4,8 +4,9 @@ from collections.abc import Mapping
 from typing import Any
 
 from capitalcom.api.composition import Core
+from capitalcom.application.error_mapping import outcome_unknown
 from capitalcom.domain.confirmation import DealConfirmation
-from capitalcom.domain.errors import OutcomeUnknownError, ResponseFormatError
+from capitalcom.domain.errors import ResponseFormatError
 from capitalcom.domain.parsing import as_mapping, format_error, require_str
 
 
@@ -26,5 +27,5 @@ def submit(
         # Only a 2xx gets here, so the server took the request and the trade may exist;
         # reporting the malformed body alone would read as "nothing happened" and invite a
         # duplicate resend.
-        raise OutcomeUnknownError(method, path) from malformed
+        raise outcome_unknown(method, path, malformed) from malformed
     return core.confirmer.confirm(reference).unwrap()

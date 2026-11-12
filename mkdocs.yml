@@ -9,6 +9,7 @@ edit_uri: ""
 strict: true
 exclude_docs: |
   superpowers/
+  snippets/
 
 theme:
   name: material

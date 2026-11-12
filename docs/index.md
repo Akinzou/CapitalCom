@@ -7,16 +7,7 @@ numbers and typed errors.
 
 ## Install
 
-```bash
-pip install capitalcom
-```
-
-Optional extras:
-
-- `pip install "capitalcom[streaming]"` for live prices over the WebSocket;
-- `pip install "capitalcom[encryption]"` to send the password encrypted at login.
-
-Python 3.11 or newer; on an older Python, pip installs 1.0.4, which this site does not describe.
+--8<-- "docs/snippets/install.md"
 
 ## Quick start
 

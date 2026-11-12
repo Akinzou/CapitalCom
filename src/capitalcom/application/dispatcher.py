@@ -3,7 +3,7 @@
 import random
 from collections.abc import Callable
 
-from capitalcom.application.error_mapping import error_for
+from capitalcom.application.error_mapping import error_for, outcome_unknown
 from capitalcom.application.json_codec import encode_json
 from capitalcom.application.logs import get_logger, loggable_path
 from capitalcom.application.ports import Clock, HttpRequest, HttpResponse, HttpTransport
@@ -17,7 +17,6 @@ from capitalcom.application.retry import (
 )
 from capitalcom.domain.errors import (
     CapitalComError,
-    OutcomeUnknownError,
     RateLimitError,
     ValidationError,
 )
@@ -88,7 +87,7 @@ class Dispatcher:
             if idempotent:
                 return Err[CapitalComError](sent.error), None
             if sent.error.reached_server:
-                return Err(OutcomeUnknownError(request.method, request.path))
+                return Err(outcome_unknown(request.method, request.path, sent.error))
             return Err(sent.error)
         response = sent.value
         if 200 <= response.status < 300:
@@ -98,7 +97,7 @@ class Dispatcher:
             # The server refused before acting, so even a trade is safe to resend.
             return Err[CapitalComError](error), error.retry_after
         if response.status >= 500 and not idempotent:
-            return Err(OutcomeUnknownError(request.method, request.path))
+            return Err(outcome_unknown(request.method, request.path, error))
         if response.status in _GATEWAY_STATUSES:
             return Err[CapitalComError](error), None
         return Err(error)
