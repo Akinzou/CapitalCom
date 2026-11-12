@@ -116,7 +116,12 @@ class DealConfirmation:
 
 
 class SizeAdjustedError(CapitalComError):
-    """The server booked a different size than requested; the deal is open regardless."""
+    """The server booked a different size than requested; the deal is open regardless.
+
+    It lives here rather than in ``errors`` because it carries a ``DealConfirmation``:
+    ``errors`` would have to import ``confirmation``, which imports ``errors``, a cycle the
+    import-graph gate refuses even for type-only imports.
+    """
 
     def __init__(self, requested: Decimal, confirmation: DealConfirmation) -> None:
         if confirmation.size is None:
