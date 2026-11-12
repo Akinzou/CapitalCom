@@ -1,9 +1,12 @@
 name: Documentation site
 
-# Publishes the site for the version on PyPI (ADR 0013): publish.yml calls it after the
-# upload succeeded, or it is started by hand from master to ship a documentation fix. It is
-# not run on every push, because the site would then describe code that is not on PyPI.
+# Publishes the site on every push to master, so the site and the README's coverage badge
+# follow master (ADR 0013). publish.yml calls it again after a release's PyPI upload, and it
+# can be started by hand. The home page says the site follows master, and the changelog's
+# Unreleased section names what is not on PyPI yet.
 on:
+  push:
+    branches: [master]
   workflow_call:
   workflow_dispatch:
 

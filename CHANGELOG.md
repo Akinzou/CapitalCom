@@ -10,7 +10,10 @@ All notable changes to this project are documented in this file. The format foll
 
 - The README has a table of contents, a "Code Coverage" badge beside the title with the other
   badges below it, and diagrams of the layers, of a trade from request to confirmation, and of
-  the error types. The PyPI and licence badges link to the project page and the licence.
+  the error types. The PyPI and licence badges link to the project page and the licence, and
+  a docs badge links the documentation site.
+- The documentation site opens in a dark theme, with a switch to the light one, and is
+  rebuilt on every change to `master`, so it and the coverage badge are always current.
 
 ## [2.0.1] — 2026-11-12
 

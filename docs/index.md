@@ -5,6 +5,10 @@ and live accounts. It logs in and keeps the session alive for you, places and co
 reads markets, prices and history, and streams live quotes, with typed results, `Decimal`
 numbers and typed errors.
 
+!!! note "This site follows `master`"
+    It is rebuilt on every change. What the [changelog](changelog.md) lists under
+    *Unreleased* is not on PyPI yet.
+
 ## Install
 
 --8<-- "docs/snippets/install.md"

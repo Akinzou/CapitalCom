@@ -67,3 +67,18 @@ def test_the_title_carries_the_coverage_badge_alone() -> None:
     title = README.splitlines()[0]
     assert title.startswith("# CapitalCom [![Code Coverage](")
     assert title.count("[![") == 1
+
+
+def test_docs_badge_shows_the_site_build_from_master_and_links_the_site() -> None:
+    # The site is published on every push to master, so the badge follows that branch.
+    assert SITE_URL is not None
+    badge = re.search(
+        r"\[!\[Docs\]\((https://img\.shields\.io/github/actions/workflow/status/[^)\s]+)\)\]"
+        r"\(([^)]+)\)",
+        README,
+    )
+    assert badge is not None, "README has no linked docs badge"
+    url = urlparse(badge.group(1))
+    assert url.path.endswith("/Akinzou/CapitalCom/pages.yml")
+    assert parse_qs(url.query)["branch"] == ["master"]
+    assert badge.group(2) == SITE_URL.group(1)

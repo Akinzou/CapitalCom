@@ -1,6 +1,6 @@
 # CapitalCom [![Code Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fakinzou.github.io%2FCapitalCom%2Fbadges%2Fcoverage.json&query=%24.percent_covered_display&suffix=%25&label=Code%20Coverage&logo=pytest&logoColor=white&color=brightgreen)](https://github.com/Akinzou/CapitalCom/actions/workflows/pages.yml)
 
-[![CI](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/capitalcom)](https://pypi.org/project/capitalcom/) ![Python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
+[![Docs](https://img.shields.io/github/actions/workflow/status/Akinzou/CapitalCom/pages.yml?branch=master&label=docs&logo=materialformkdocs&logoColor=white)](https://akinzou.github.io/CapitalCom/) [![CI](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/capitalcom)](https://pypi.org/project/capitalcom/) ![Python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
 
 [![Discord](https://img.shields.io/badge/Join_us_on-Discord-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/BARYa55KS8)
 

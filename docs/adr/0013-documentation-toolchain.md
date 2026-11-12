@@ -33,9 +33,14 @@ Markdown. The ecosystem around MkDocs, read on 2026-11-12:
 - **The API reference documents the package-root names** and the `CapitalCom` namespaces. A
   test asserts a docstring on each of them and on their public methods and properties.
 - **Hosting: GitHub Pages at `https://akinzou.github.io/CapitalCom/`.** A separate workflow
-  deploys on every `v*` tag after the PyPI upload succeeded, or when started by hand. It is
-  not deployed on every push to `master`, because the site would then describe code that is
-  not on PyPI.
+  deploys on every push to `master`, again on every `v*` tag after the PyPI upload succeeded,
+  and when started by hand. Until 2026-11-12 it skipped pushes to `master`, so that the site
+  described only code on PyPI; the owner chose a site and a coverage badge that are always
+  current instead. The cost is that the site may describe changes not released yet, so the
+  home page says the site follows `master`, and the changelog's Unreleased section names
+  those changes.
+- **Dark theme first.** The site opens in Material's `slate` scheme, with a toggle to the
+  light one in the header.
 - `docs/superpowers/` (design notes and plans) is excluded from the site.
 - **The README's coverage badge reads its number from the site.** The site build runs the
   unit tests with coverage and publishes the total alone as `badges/coverage.json`; the badge
