@@ -8,9 +8,9 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Fixed
 
-- **`OutcomeUnknownError` always says why.** After a network failure that followed the send,
-  or a 5xx answer to a trade or another change, the error now carries that failure as its
-  `__cause__`, shown in the traceback, as the other cases already did.
+- **`OutcomeUnknownError` says why in two more cases.** After a network failure that
+  followed the send, or a 5xx answer to a trade or another change, the error now carries
+  that failure as its `__cause__`, shown in the traceback, as the other cases already did.
 
 ### Documentation
 

@@ -7,32 +7,28 @@ from typing import Any
 
 import pytest
 
-from capitalcom.api.composition import Core, build_core, stream_transport
+from capitalcom.api.composition import Core, stream_transport
 from capitalcom.api.stream import Stream, StreamResource
 from capitalcom.application.ports import StreamTransport
 from capitalcom.application.result import Err, Result
-from capitalcom.application.session import Credentials
 from capitalcom.application.stream_gaps import kept_from_drop
-from capitalcom.domain.enums import STREAM_URL, Environment, Resolution
+from capitalcom.domain.enums import STREAM_URL, Resolution
 from capitalcom.domain.errors import (
     StreamError,
     SubscriptionError,
     TransportError,
     ValidationError,
 )
-from capitalcom.domain.secret import Secret
 from capitalcom.domain.streaming import Candle, CandleType, Gap, Quote
 from tests.fakes import (
     FakeClock,
     FakeConnection,
-    FakeStreamTransport,
-    FakeTransport,
     Silence,
     ack_frame,
     auto_ack,
     quote_frame,
 )
-from tests.unit.application.stream_support import login_ok
+from tests.unit.api.stream_support import resource
 
 RESET = TransportError("reset", reached_server=False)
 CANDLE = json.dumps(
@@ -51,17 +47,6 @@ CANDLE = json.dumps(
         },
     }
 )
-
-
-def resource(
-    connections: list[FakeConnection | TransportError],
-) -> tuple[StreamResource, FakeStreamTransport, Core]:
-    clock = FakeClock()
-    credentials = Credentials(Secret("str-key-0001"), "me@example.com", Secret("str-pw-0001"))
-    http = FakeTransport([login_ok(n) for n in range(1, 4)])
-    core = build_core(credentials, Environment.DEMO, clock=clock, transport=http)
-    transport = FakeStreamTransport(clock, connections)
-    return StreamResource(core, lambda: transport), transport, core
 
 
 def test_connect_dials_the_pinned_url_and_logs_in() -> None:

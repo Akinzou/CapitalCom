@@ -5,7 +5,7 @@ import pytest
 from capitalcom.domain.errors import ResponseFormatError
 from capitalcom.domain.streaming import Quote
 from tests.fakes import FakeConnection, ack_frame, quote_frame
-from tests.unit.api.test_stream import resource
+from tests.unit.api.stream_support import resource
 
 
 def test_reading_goes_on_after_an_undecodable_frame() -> None:

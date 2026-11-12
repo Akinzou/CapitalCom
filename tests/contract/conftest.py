@@ -87,6 +87,11 @@ def open_position(core: Core, size: Decimal) -> DealConfirmation:
     return core.confirmer.confirm(opened["dealReference"]).unwrap()
 
 
+def smoke() -> bool:
+    """Whether this is the release smoke, which must not pass without having traded."""
+    return os.environ.get("CAPITAL_SMOKE") == "1"
+
+
 @pytest.fixture
 def btc(demo_core: Core) -> Iterator[Market]:
     """BTCUSD rules; afterwards closes every BTCUSD position the test opened.
@@ -99,7 +104,7 @@ def btc(demo_core: Core) -> Iterator[Market]:
     if status != "TRADEABLE":
         # A release smoke that skipped would pass having traded nothing, so there a closed
         # market fails with the reason; the nightly contract run reports it as a skip.
-        if os.environ.get("CAPITAL_SMOKE"):
+        if smoke():
             pytest.fail(f"{EPIC} {status}: the release smoke needs an open market, rerun later")
         pytest.skip(f"{EPIC} {status}")
     rules = details["dealingRules"]
