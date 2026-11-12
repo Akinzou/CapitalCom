@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format foll
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [2.0.1] — 2026-11-12
 
 ### Fixed
 
@@ -157,5 +157,5 @@ it settles a behaviour you can rely on.
 - **Deprecation link.** The `CapitalClient` deprecation warning points to the migration guide
   on the documentation site.
 
-[Unreleased]: https://github.com/Akinzou/CapitalCom/compare/v2.0.0...HEAD
+[2.0.1]: https://github.com/Akinzou/CapitalCom/releases/tag/v2.0.1
 [2.0.0]: https://github.com/Akinzou/CapitalCom/releases/tag/v2.0.0
