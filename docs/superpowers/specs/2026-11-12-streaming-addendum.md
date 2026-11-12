@@ -1,6 +1,6 @@
 # capitalcom 2.0 — Streaming addendum (stage 4)
 
-Status: draft for owner review · Date: 2026-11-12 · Branch: `rewrite/stage-4-streaming`
+Status: approved by owner 2026-11-12, probe findings in §3 · Date: 2026-11-12 · Branch: `rewrite/stage-4-streaming`
 Extends `2026-11-11-capitalcom-v2-design.md` (goal 6, §9 stage 4). Where the two disagree,
 this document wins for streaming only.
 
@@ -34,27 +34,24 @@ it holds to the same rule as the REST core: nothing fails silently.
   at least once every 10 minutes. The stream "falls off" when the account is switched with
   `PUT /session`.
 
-## 3. Unknowns: the probe decides before the plan
+## 3. What the demo probe found (2026-11-12)
 
-The documentation leaves several facts open, and the design depends on them. So a demo probe
-runs before the plan is written, in the same way as in stage 2b: `workflow_dispatch` on a
-temporary branch that is deleted afterwards. The probe logs no tokens, account ids or deal
-ids. Each row below states the decision for every outcome, so the probe settles the question
-and nobody has to argue about it afterwards.
+A throwaway probe settled the open facts before the plan. It ran on a temporary branch, which
+was deleted afterwards, and logged no tokens, account ids or deal ids. The connections in it
+sent no protocol-level pings, so only the application `ping` was measured.
 
-| # | Question | If A | If B |
+| # | Question | Observed | Decision |
 |---|---|---|---|
-| P1 | Does a WS `ping` keep the REST session alive (no REST call for more than 10 minutes)? | Yes: a ping ack also calls `SessionManager.mark_used()` | No: the stream's keepalive also sends REST `GET /ping` |
-| P2 | Do live subscriptions survive when the REST session is renewed by a new login (new tokens)? | Yes: later frames simply carry the new tokens | No: renewing the tokens triggers a reconnect, reported as a `Gap` |
-| P3 | Is the demo host the documented URL? What do `streamEndpoint` and `streamingHost` return on demo? | Same host: one constant | Per environment: `Environment.stream_url`, pinned in code |
-| P4 | What does a refusal look like for an unknown epic, a 41st epic or a bad token? Are there statuses other than `PROCESSED`? | Records the shapes; each one maps to a typed error (§5.4) | — |
-| P5 | Is the 40 limit counted per connection across quotes and OHLC, or per destination? | Shared: one count over the union of epics | Separate: two counts |
-| P6 | Does `ohlc.event` repeat the same `t` while a bar forms, and does it come for both bid and ask? | Documented as such on `Candle` | — |
-| P7 | What does the server do after more than 10 minutes without a ping, and after `DELETE /session`? | Records the close code or frame, which feeds reconnect classification (§5.3) | — |
+| P1 | Does a WS `ping` keep the REST session alive? | Yes. Tokens pinged over WS every 4 min still worked on REST after 13 min with no REST call. Unpinged tokens got `401` | A ping ack calls `SessionManager.mark_used()` |
+| P2 | Do subscriptions survive a new login? | Yes. A second login left the stream untouched, and pings with the old or the new tokens both answered `OK` | No reconnect on renewal; every frame carries the current tokens |
+| P3 | Which host? | `streamingHost` and `streamEndpoint` on demo are both `wss://api-streaming-capital.backend-capital.com/`, the documented host | One constant for both environments: the documented URL with `/connect` |
+| P4 | What do refusals look like? | Per key, inside an `OK` answer: `"ERROR: <epic> not found"`, `"ERROR: Max Subscription limit reached."`, `"ERROR: SECOND not found"`; `"ALREADY_SUBSCRIBED"` also occurs. Whole frame: `status: "ERROR"` with `payload.errorCode` (`error.invalid.session.token`, `error.null.epic`). No refusal closed the socket | §5.4 |
+| P5 | How is the 40 limit counted? | For quotes: the 41st epic was refused. OHLC subscriptions were accepted beside 40 quote epics, so the two counts are separate. A 41-epic OHLC call came back with 39 keys, two short | Two counts, 40 each; every requested key must appear in the ack |
+| P6 | How often does `ohlc.event` come? | For `MINUTE`, one event per bar and per side (`bid` and `ask`) over two minutes, with the extra field `lastTradedVolume` | `Candle` carries no "closed" flag (the server says nothing about it) and an optional `volume` |
+| P7 | What happens after 10 min without a ping, and after `DELETE /session`? | Neither closed the socket: quotes kept arriving for 13 min with no ping and after the REST session expired. After `DELETE /session` quotes slowed, and `ping` answered `error.invalid.session.token` | The keepalive is what detects a dead session, and it gets fresh tokens (§5.3) |
 
-`PUT /session` cannot be probed: the demo user has one account. The account-switch row in §5.3
-therefore stays untested on the server, as it did in stage 2a, and is covered by unit tests
-alone.
+`PUT /session` could not be probed: the demo user has one account. The account-switch row in
+§5.3 therefore stays untested on the server, as in stage 2a, and is covered by unit tests.
 
 ## 4. Goals, non-goals, anti-goals
 
@@ -105,18 +102,21 @@ with CapitalCom(api_key, identifier, password) as cc, cc.stream.connect() as str
   candle=CandleType.CLASSIC)` and `unsubscribe_ohlc(epics, resolutions=None, candles=None)`
   send the message and wait for its acknowledgement, matched by `correlationId`.
   - Events that arrive in the meantime are buffered and delivered in order.
-  - A key that comes back as anything other than `PROCESSED` raises (§5.4).
-  - The client checks the 40 limit before anything is sent: a call that would exceed it
-    raises `ValidationError`. How the limit is counted follows P5.
+  - A key that comes back as anything other than `PROCESSED` or `ALREADY_SUBSCRIBED`, or that
+    is missing from the ack, raises (§5.4).
+  - The client checks the limits before anything is sent: at most 40 quote epics and at most
+    40 OHLC epics. A call that would exceed either raises `ValidationError`.
 - `Quote(epic, bid, bid_size, offer, offer_size, time, raw)` and
-  `Candle(epic, resolution, candle_type, price_side, time, open, high, low, close, raw)`
+  `Candle(epic, resolution, candle_type, price_side, time, open, high, low, close, volume,
+  raw)`
   are frozen, slotted dataclasses.
   - `price_side` is `BID` or `ASK`.
   - `time` comes from the server's milliseconds as an aware UTC `datetime`.
-  - Prices are parsed with `parse_float=Decimal`.
+  - Prices are parsed with `parse_float=Decimal`. `volume` is `lastTradedVolume`, or `None`
+    when it is absent.
 - `Gap(since, until, reason)` is yielded once after a reconnect and its resubscription
   succeed. `since` is the time of the last event before the drop. `reason` is one of
-  `NETWORK`, `SESSION_RENEWED`, `ACCOUNT_SWITCHED` and `SERVER_CLOSED`.
+  `NETWORK`, `ACCOUNT_SWITCHED` and `SERVER_CLOSED`.
 - `Stream.close()` unsubscribes nothing and closes the socket. `CapitalCom.close()` and
   `__exit__` close an open stream before `DELETE /session`.
 
@@ -138,9 +138,8 @@ Why, against a reader thread with callbacks:
 
 Costs, to be documented:
 - The keepalive interval is 5 minutes, half the server's 10.
-- A loop body that blocks for longer than that can let the session lapse. The next `__next__`
-  then reconnects and yields a `Gap`. The data does not disappear in silence; it arrives late
-  and is marked.
+- A loop body that blocks for longer than that leaves the REST session unrenewed. The server
+  keeps the socket open (P7), so no data is lost; the next keepalive simply gets fresh tokens.
 - No library code drops quotes. While the caller is slow, unread frames wait in the
   adapter's bounded receive queue, and when that queue is full the adapter stops reading the
   socket. Staleness is visible from `Quote.time`.
@@ -149,8 +148,7 @@ Costs, to be documented:
 
 - Drops that lead to a reconnect:
   - the socket closes or raises;
-  - a keepalive acknowledgement does not arrive within 10 s;
-  - the server reports an invalid session (shape from P4/P7).
+  - a keepalive acknowledgement does not arrive within 10 s.
 - Reconnect policy:
   - Backoff is 1, 2, 4, 8 and then 16 s, with jitter, through the `Clock` port. A reconnect
     whose resubscription succeeds resets the counter.
@@ -160,7 +158,10 @@ Costs, to be documented:
 - Tokens:
   - Every outgoing frame takes its tokens from `SessionManager.tokens()` at the moment it is
     sent; the stream keeps no tokens of its own.
-  - When a renewal hands out new tokens, the stream follows P2.
+  - A renewal needs nothing from the stream (P2).
+  - A frame answered with `error.invalid.session.token` makes the stream call
+    `SessionManager.invalidate()` on the tokens it sent and resend that frame once with fresh
+    ones. A second refusal raises `AuthenticationError`. The socket stays open (P7).
 - Account switch: `SessionManager.switch_account` bumps a session generation counter. The
   stream compares the counter before each frame. When it differs, the stream reconnects at
   once with reason `ACCOUNT_SWITCHED`, instead of waiting for the server to drop it.
@@ -175,8 +176,9 @@ Costs, to be documented:
 
 - `StreamError(TransportError)`: the stream gave up reconnecting; `__cause__` holds the last
   failure.
-- `SubscriptionError(ApiError)`: the server answered with a status other than `OK`, or a key
-  other than `PROCESSED`. It carries the keys and the statuses. The exact fields follow P4.
+- `SubscriptionError(ApiError)`: the frame's status is `ERROR` (its `errorCode` becomes
+  `error_code`), or a key is refused (`"ERROR: …"`) or missing from the ack. It carries a
+  mapping from each refused key to the server's text, or to `"MISSING"`.
 - `ValidationError`: the 40 limit, an empty or duplicate epic list, a second open stream, or
   a call on a closed `Stream`.
 - `ResponseFormatError`: a frame that is not a JSON object, or a known event missing a field.
@@ -205,7 +207,8 @@ Costs, to be documented:
 - `api/stream.py` holds the `cc.stream` namespace and `Stream`.
 - `domain/streaming.py` holds `Quote`, `Candle`, `Gap`, `CandleType` and `PriceSide`. The
   existing `Resolution` enum of `/prices` has the same eight values and is reused.
-- The host is pinned in code per `Environment` (P3). A server-supplied `streamingHost` or
+- The host is one constant, `wss://api-streaming-capital.backend-capital.com/connect`, for
+  both environments (P3). A server-supplied `streamingHost` or
   `streamEndpoint` is never dialled, so a changed field cannot send the tokens elsewhere. The
   contract test asserts that the pinned host still matches what demo reports, so a drift
   shows up in CI.
