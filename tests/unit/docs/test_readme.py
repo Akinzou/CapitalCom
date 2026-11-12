@@ -7,7 +7,9 @@ from urllib.parse import parse_qs, urlparse
 ROOT = Path(__file__).parents[3]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 PAGES_WORKFLOW = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
-SITE_URL = re.search(r"^site_url: (\S+)$", (ROOT / "mkdocs.yml").read_text(), re.MULTILINE)
+SITE_URL = re.search(
+    r"^site_url: (\S+)$", (ROOT / "mkdocs.yml").read_text(encoding="utf-8"), re.MULTILINE
+)
 BADGE_FILE = "badges/coverage.json"
 
 
@@ -37,7 +39,7 @@ def test_every_contents_link_reaches_a_heading() -> None:
 
 
 def test_every_section_is_in_the_contents() -> None:
-    sections = {github_anchor(h) for h in headings("##")} - {"contents"}
+    sections = {github_anchor(h) for h in headings("##") + headings("###")} - {"contents"}
     assert sections <= set(contents_links())
 
 
@@ -45,9 +47,14 @@ def test_coverage_badge_reads_the_file_the_site_publishes() -> None:
     # The number comes from the test run in the site build; a badge pointing anywhere else
     # would show "resource not found" on the project page instead of the coverage.
     assert SITE_URL is not None
-    badge = re.search(r"https://img\.shields\.io/badge/dynamic/json\?[^)\s]+", README)
-    assert badge is not None, "README has no dynamic coverage badge"
-    query = parse_qs(urlparse(badge.group(0)).query)
+    badge = re.search(
+        r"\[!\[Coverage\]\((https://img\.shields\.io/badge/dynamic/json\?[^)\s]+)\)\]\(([^)]+)\)",
+        README,
+    )
+    assert badge is not None, "README has no linked dynamic coverage badge"
+    # The link leads to the runs that measured the number, so a reader can check it.
+    assert badge.group(2).endswith("/actions/workflows/pages.yml")
+    query = parse_qs(urlparse(badge.group(1)).query)
     assert query["url"] == [SITE_URL.group(1) + BADGE_FILE]
     assert query["query"] == ["$.percent_covered_display"]
     assert f"site/{BADGE_FILE}" in PAGES_WORKFLOW

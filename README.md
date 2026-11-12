@@ -1,4 +1,4 @@
-# CapitalCom [![Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fakinzou.github.io%2FCapitalCom%2Fbadges%2Fcoverage.json&query=%24.percent_covered_display&suffix=%25&label=coverage&logo=pytest&logoColor=white&color=brightgreen)](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml) [![CI](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml) ![PyPI](https://img.shields.io/pypi/v/capitalcom) ![Python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-lightgrey.svg) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
+# CapitalCom [![Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fakinzou.github.io%2FCapitalCom%2Fbadges%2Fcoverage.json&query=%24.percent_covered_display&suffix=%25&label=coverage&logo=pytest&logoColor=white&color=brightgreen)](https://github.com/Akinzou/CapitalCom/actions/workflows/pages.yml) [![CI](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml) ![PyPI](https://img.shields.io/pypi/v/capitalcom) ![Python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-lightgrey.svg) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
 [![Discord](https://img.shields.io/badge/Join_us_on-Discord-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/BARYa55KS8)
 
 A Python client for the [Capital.com](https://capital.com) REST and WebSocket API, for demo
@@ -75,23 +75,30 @@ The diagrams render on GitHub; elsewhere, such as on PyPI, they show as source.
 
 ### Layers
 
-An arrow means "imports". The domain and application layers do no I/O of their own: they reach
-the network and the clock only through ports, which the infrastructure adapters implement. The
-`api` layer builds those adapters and hands them in, so the rest of the code never imports them.
+A layer may import only the layers drawn below it; the arrows show the paths a call takes, and
+every layer also uses the domain types. The application and domain layers do no I/O of their
+own: they reach the network and the clock only through ports, which the infrastructure adapters
+implement. The `api` layer builds those adapters and hands them in; the 1.x compatibility layer
+builds its HTTP transport the same way, so the application code never imports an adapter.
 
 ```mermaid
 flowchart TB
     you(["Your code"])
-    root["capitalcom<br/>CapitalCom, CapitalClient (1.x, deprecated)"]
+    root["capitalcom<br/>CapitalCom and every public name"]
+    legacy["legacy<br/>CapitalClient, 1.x, deprecated"]
     api["api<br/>resources: positions, orders, markets, prices, stream, ...<br/>builds the adapters"]
-    app["application<br/>session, rate limiter, retries, deal confirmation, stream reconnect"]
     infra["infrastructure<br/>requests, websockets, system clock"]
+    app["application<br/>session, rate limiter, retries, deal confirmation, stream reconnect"]
     domain["domain<br/>typed results, Decimal numbers, errors"]
     server[("Capital.com<br/>REST and WebSocket")]
 
-    you --> root --> api
-    api --> app
+    you --> root
+    root --> api
+    root --> legacy
+    legacy --> api
+    legacy -- its own HTTP transport --> infra
     api --> infra
+    api --> app
     infra -- implements the ports of --> app
     app --> domain
     infra -. HTTPS and WSS .-> server
@@ -114,10 +121,13 @@ sequenceDiagram
     Lib->>Server: POST /api/v1/positions
     alt 2xx
         Server-->>Lib: dealReference
-    else 429 Too Many Requests
-        Note over Lib,Server: refused before acting, so sent again after Retry-After
     else 401 on an expired session
         Note over Lib,Server: one fresh login, then sent again
+    else 429 Too Many Requests
+        Note over Lib,Server: refused before acting, so sent again after Retry-After, 3 attempts in all
+        Lib-->>You: RateLimitError if still refused, or if Retry-After is over 60 s
+    else connection failed before anything was sent
+        Lib-->>You: TransportError, safe to try again
     else connection lost after sending, 5xx, or an unreadable answer
         Lib-->>You: OutcomeUnknownError, never sent twice
     end
@@ -125,12 +135,16 @@ sequenceDiagram
         Lib->>Server: GET /api/v1/confirms/dealReference
         Server-->>Lib: not booked yet, ACCEPTED or REJECTED
     end
-    alt ACCEPTED
+    alt ACCEPTED at the size asked for
         Lib-->>You: DealConfirmation with deal_status, size, position_id
+    else ACCEPTED at another size
+        Lib-->>You: SizeAdjustedError, the deal is open
     else REJECTED
         Lib-->>You: DealRejectedError with the reason
     else still not booked after 5 s
         Lib-->>You: ConfirmationTimeoutError
+    else asking failed: connection lost, 5xx, or an unreadable answer
+        Lib-->>You: OutcomeUnknownError
     end
 ```
 
