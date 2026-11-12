@@ -43,7 +43,8 @@ def send_raw(
         raise ValidationError("_request never follows redirects; they would carry the tokens")
     extra_headers = dict(options.pop("headers", None) or {})
     options.setdefault("timeout", LEGACY_TIMEOUT)
-    for attempt in range(MAX_ATTEMPTS):
+    relogged = False
+    for _ in range(MAX_ATTEMPTS):
         tokens = core.session.tokens().unwrap()
         core.dispatcher.throttle(method, path)
         response = session.request(
@@ -54,8 +55,14 @@ def send_raw(
             allow_redirects=False,
             **options,
         )
-        if response.status_code == 401 and attempt == 0:
+        if response.status_code == 401:
+            # One re-login per call, on the first 401 even after a 429, as in the 2.x client.
+            # A second 401 came with fresh tokens, so they are kept: dropping them would cost
+            # a second login on every call to an endpoint that always answers 401.
+            if relogged:
+                return response
             core.session.invalidate(tokens)
+            relogged = True
             continue
         if response.status_code == 429:
             _log.warning(

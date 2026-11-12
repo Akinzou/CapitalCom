@@ -59,6 +59,12 @@ def test_partial_close_is_refused_before_sending(api: responses.RequestsMock) ->
     assert client.close_position_by_id("P1", size=0) == "SUCCESS"
 
 
+def test_partial_close_by_ref_is_refused_before_the_lookup(api: responses.RequestsMock) -> None:
+    with pytest.raises(ValidationError, match="whole position"):
+        legacy().close_position_by_ref("o_1", size=0.5)
+    assert sent(api) == []
+
+
 def test_rejected_open_raises_deal_rejected(api: responses.RequestsMock) -> None:
     opened(api, status="REJECTED", affected=())
     with pytest.raises(DealRejectedError, match="RC_NOT_ENOUGH_MARGIN"):

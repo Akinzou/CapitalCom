@@ -207,3 +207,29 @@ def test_reapply_when_login_does_not_name_the_account_sends_put() -> None:
         ("PUT", "/api/v1/session", "B"),
     ]
     assert session.current_account_id == "B"
+
+
+def test_adopted_tokens_end_the_account_selection() -> None:
+    # Adopted tokens belong to an account nobody named, so the next renewal must not move
+    # them to the account chosen for the session they replaced.
+    api, session, transport, clock = make([login_ok(1), switched(), login_ok(2), OK])
+    session.switch_account("B")
+    session.adopt_tokens("cst-adopted-01", "xst-adopted-01")
+    clock.advance(600)
+    assert isinstance(api.call("GET", "/api/v1/accounts"), Ok)
+    assert shape(transport.requests[2:]) == [
+        ("POST", "/api/v1/session", None),
+        ("GET", "/api/v1/accounts", None),
+    ]
+
+
+def test_dropping_the_session_keeps_the_account_selection() -> None:
+    api, session, transport, _ = make([login_ok(1), switched(), login_ok(2), switched(), OK])
+    session.switch_account("B")
+    session.adopt_tokens(None, None)
+    assert isinstance(api.call("GET", "/api/v1/accounts"), Ok)
+    assert shape(transport.requests[2:]) == [
+        ("POST", "/api/v1/session", None),
+        ("PUT", "/api/v1/session", "B"),
+        ("GET", "/api/v1/accounts", None),
+    ]

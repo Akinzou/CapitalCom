@@ -193,8 +193,9 @@ Deliberate behaviour changes, each listed in the CHANGELOG:
 2. A full close (`size=None`) uses the documented `DELETE /positions/{dealId}` and waits for
    confirmation. A rejection now raises instead of returning `"SUCCESS"`.
 3. Errors are typed subclasses of `Exception` instead of bare `Exception`.
-4. A REJECTED confirmation on open raises `DealRejectedError`. In 1.0.4 it returned the dealId as
-   if the trade had succeeded.
+4. A REJECTED confirmation on open raises `DealRejectedError`. In 1.0.4 it named no affected
+   deal, so the lookup was retried and then raised a bare "not resolved" `Exception`
+   (corrected 2026-11-12; ADR 0010 records the rejection's shape).
 5. A write request that times out raises `OutcomeUnknownError` and is not retried. In 1.0.4 such a
    call could hang forever.
 
