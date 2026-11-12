@@ -8,6 +8,11 @@ on:
   schedule:
     - cron: "17 3 * * *"
   workflow_dispatch:
+    inputs:
+      pypi_version:
+        description: "Smoke-test this version from PyPI instead of running the contract tests"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -20,8 +25,11 @@ concurrency:
 jobs:
   contract:
     # pull_request (never pull_request_target) from this repository only: a fork's code never
-    # runs with the account secrets.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # runs with the account secrets. A dispatch naming a PyPI version runs the smoke job instead.
+    if: >-
+      (github.event_name != 'pull_request'
+      || github.event.pull_request.head.repo.full_name == github.repository)
+      && !inputs.pypi_version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,10 +43,43 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e . --group dev
       # The only step that sees the secrets. INFO logs record the probed behaviour (status
-      # codes, error codes, deal ids) for ADR 0007; tokens are redacted by the library.
+      # and error codes) for ADR 0007, never ids; tokens are redacted by the library.
       - name: Contract tests
         env:
           CAPITAL_API_KEY: ${{ secrets.CAPITAL_API_KEY }}
           CAPITAL_IDENTIFIER: ${{ secrets.CAPITAL_IDENTIFIER }}
           CAPITAL_PASSWORD: ${{ secrets.CAPITAL_PASSWORD }}
         run: pytest -m contract -v -rA --log-cli-level=INFO
+
+  # The released package, not the checkout: installs the given version from PyPI into a clean
+  # venv and runs the README quick start and the 1.x round trip against demo (spec section 7).
+  smoke:
+    if: inputs.pypi_version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+      # The version reaches the shell through an environment variable and is checked against
+      # a version pattern first, so the input cannot inject a command.
+      - name: Install from PyPI
+        env:
+          VERSION: ${{ inputs.pypi_version }}
+        run: |
+          [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+)*((a|b|rc)[0-9]+)?$ ]] || { echo "bad version: $VERSION" >&2; exit 1; }
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install "capitalcom==$VERSION" pytest
+          installed=$("$RUNNER_TEMP/venv/bin/python" -I -c "import importlib.metadata as m; print(m.version('capitalcom'))")
+          [ "$installed" = "$VERSION" ] || { echo "installed $installed, wanted $VERSION" >&2; exit 1; }
+      # The checkout has no importable capitalcom (src layout), so both runs use the venv's.
+      - name: Quick start and legacy round trip on demo
+        env:
+          CAPITAL_API_KEY: ${{ secrets.CAPITAL_API_KEY }}
+          CAPITAL_IDENTIFIER: ${{ secrets.CAPITAL_IDENTIFIER }}
+          CAPITAL_PASSWORD: ${{ secrets.CAPITAL_PASSWORD }}
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" docs/examples/quickstart.py
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -p no:cacheprovider -m contract -v tests/contract/test_legacy_contract.py

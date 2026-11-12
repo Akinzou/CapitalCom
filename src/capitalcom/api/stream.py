@@ -20,7 +20,10 @@ class Stream:
 
     Iteration blocks in the calling thread; the library starts no thread of its own.
     Keepalives and reconnects happen inside ``next()``. Every interruption is yielded as a
-    ``Gap``; when the stream gives up it raises ``StreamError`` and iteration then stops.
+    ``Gap``. When the stream gives up, the events it had already read come first, then
+    ``next()`` raises the error (``StreamError`` after the reconnects failed), and iteration
+    stops; if a subscribe call raised it, iteration ends after the events without raising
+    it again. ``close()`` drops what was not read.
     """
 
     def __init__(self, session: StreamSession) -> None:
@@ -28,7 +31,10 @@ class Stream:
 
     @property
     def closed(self) -> bool:
-        """True once the stream is closed, by ``close()`` or because it gave up."""
+        """True once the socket is closed, by ``close()`` or because the stream gave up.
+
+        Events read before a give-up may still be waiting; iterate to receive them.
+        """
         return self._session.closed
 
     def subscribe_quotes(self, epics: Sequence[str]) -> None:
@@ -76,9 +82,9 @@ class Stream:
         return self
 
     def __next__(self) -> StreamEvent:
-        # A closed stream ends iteration instead of raising, so a for loop whose body closed
-        # the stream, or that already saw StreamError, simply finishes.
-        if self._session.closed:
+        # A stream with nothing left ends iteration instead of raising, so a for loop whose
+        # body closed the stream, or that already saw StreamError, simply finishes.
+        if self._session.exhausted:
             raise StopIteration
         result = self._session.next_event()
         if isinstance(result, Err) and isinstance(result.error, StreamClosedError):

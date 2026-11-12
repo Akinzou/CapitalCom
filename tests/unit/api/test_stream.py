@@ -3,6 +3,7 @@
 import itertools
 import json
 import sys
+from typing import Any
 
 import pytest
 
@@ -11,6 +12,7 @@ from capitalcom.api.stream import Stream, StreamResource
 from capitalcom.application.ports import StreamTransport
 from capitalcom.application.result import Err, Result
 from capitalcom.application.session import Credentials
+from capitalcom.application.stream_gaps import kept_from_drop
 from capitalcom.domain.enums import STREAM_URL, Environment, Resolution
 from capitalcom.domain.errors import (
     StreamError,
@@ -25,6 +27,7 @@ from tests.fakes import (
     FakeConnection,
     FakeStreamTransport,
     FakeTransport,
+    Silence,
     ack_frame,
     auto_ack,
     quote_frame,
@@ -175,7 +178,9 @@ def test_a_close_from_another_thread_ends_iteration() -> None:
     assert len(transport.urls) == 1
 
 
-def test_stream_trust_follows_requests_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stream_trusts_the_same_bundle_as_rest(monkeypatch: pytest.MonkeyPatch) -> None:
+    # REST passes the session's bundle explicitly, so it beats the environment; a stream
+    # that let REQUESTS_CA_BUNDLE win would silently trust a wider set than the user chose.
     import requests
 
     monkeypatch.delenv("CURL_CA_BUNDLE", raising=False)
@@ -183,10 +188,102 @@ def test_stream_trust_follows_requests_rules(monkeypatch: pytest.MonkeyPatch) ->
     assert stream_transport(None)._cafile == "/etc/ssl/certs"  # type: ignore[attr-defined]
     session = requests.Session()
     session.verify = "/path/to/bundle.pem"
-    # As in requests, the environment wins over session.verify...
-    assert stream_transport(session)._cafile == "/etc/ssl/certs"  # type: ignore[attr-defined]
-    # ...unless the session ignores the environment.
-    session.trust_env = False
     assert stream_transport(session)._cafile == "/path/to/bundle.pem"  # type: ignore[attr-defined]
-    session.verify = False
+    session.verify = False  # never switches checks off: the environment's bundle, as in REST
+    assert stream_transport(session)._cafile == "/etc/ssl/certs"  # type: ignore[attr-defined]
+    session.trust_env = False
     assert stream_transport(session)._cafile is None  # type: ignore[attr-defined]
+
+
+REFUSED = TransportError("connection refused", reached_server=False)
+
+
+def _dropped_with_two_quotes_in_the_drain(core: Core) -> None:
+    # The keepalive ack is overdue, so the drain reads A and B into the link's buffer before
+    # the drop: exactly the events a give-up used to throw away.
+    assert isinstance(core.clock, FakeClock)
+    core.clock.advance(300)
+
+
+def _drain_script() -> FakeConnection:
+    return FakeConnection(
+        [
+            ack_frame("1", {"GOLD": "PROCESSED"}),
+            Silence(10),
+            quote_frame("A"),
+            quote_frame("B"),
+            RESET,
+        ]
+    )
+
+
+def test_give_up_in_next_delivers_buffered_events_then_raises() -> None:
+    streams, _, core = resource([_drain_script(), REFUSED])
+    stream = streams.connect()
+    stream.subscribe_quotes(["GOLD"])
+    _dropped_with_two_quotes_in_the_drain(core)
+    assert [e.epic for e in itertools.islice(stream, 2) if isinstance(e, Quote)] == ["A", "B"]
+    with pytest.raises(StreamError):
+        next(stream)
+    with pytest.raises(StopIteration):
+        next(stream)
+
+
+def test_refused_resubscription_also_keeps_buffered_events() -> None:
+    refusal = FakeConnection([ack_frame("1", {"GOLD": "ERROR: GOLD not found"})])
+    streams, _, core = resource([_drain_script(), refusal])
+    stream = streams.connect()
+    stream.subscribe_quotes(["GOLD"])
+    _dropped_with_two_quotes_in_the_drain(core)
+    assert len(list(itertools.islice(stream, 2))) == 2
+    with pytest.raises(SubscriptionError):
+        next(stream)
+    assert list(stream) == []
+
+
+def _gave_up_in_subscribe(
+    after: list[FakeConnection | TransportError],
+) -> tuple[StreamResource, Stream]:
+    streams, _, _ = resource([FakeConnection([quote_frame("A"), RESET]), *[REFUSED] * 5, *after])
+    stream = streams.connect()
+    with pytest.raises(StreamError):
+        stream.subscribe_quotes(["GOLD"])
+    return streams, stream
+
+
+def test_give_up_in_subscribe_keeps_events_without_a_second_raise() -> None:
+    _, stream = _gave_up_in_subscribe([REFUSED])
+    assert stream.closed
+    events = list(stream)
+    assert [e.epic for e in events if isinstance(e, Quote)] == ["A"]
+    assert len(events) == 1
+
+
+def test_explicit_close_discards_buffered_events() -> None:
+    _, stream = _gave_up_in_subscribe([REFUSED])
+    stream.close()
+    assert list(stream) == []
+
+
+def test_connect_allowed_after_give_up_while_events_remain() -> None:
+    streams, stream = _gave_up_in_subscribe([FakeConnection()])
+    with streams.connect() as fresh:
+        assert not fresh.closed
+    assert len(list(stream)) == 1
+
+
+def test_a_close_from_another_thread_during_a_drop_ends_iteration_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    streams, _, core = resource([_drain_script(), REFUSED])
+    stream = streams.connect()
+    stream.subscribe_quotes(["GOLD"])
+
+    def closed_inside_the_window(*args: Any) -> Any:
+        stream.close()  # another thread's close() landing between the check and the use
+        return kept_from_drop(*args)
+
+    target = "capitalcom.application.stream_session.kept_from_drop"
+    monkeypatch.setattr(target, closed_inside_the_window)
+    _dropped_with_two_quotes_in_the_drain(core)
+    assert list(stream) == []  # no AttributeError, and nothing delivered after the close

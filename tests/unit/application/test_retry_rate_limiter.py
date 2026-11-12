@@ -7,7 +7,7 @@ import pytest
 from capitalcom.application.rate_limiter import (
     RateLimiter,
     RequestKind,
-    TokenBucket,
+    SlidingWindow,
     classify,
 )
 from capitalcom.application.retry import (
@@ -68,19 +68,75 @@ def test_classify() -> None:
     assert classify("PUT", "/api/v1/session") == {RequestKind.GENERAL}
 
 
-def test_token_bucket_reserves_future_slots() -> None:
-    bucket = TokenBucket(rate_per_s=1.0, capacity=1)
-    assert bucket.reserve(0.0) == 0.0
-    assert bucket.reserve(0.0) == pytest.approx(1.0)
-    assert bucket.reserve(0.0) == pytest.approx(2.0)
+def test_sliding_window_frees_a_slot_when_the_oldest_send_leaves() -> None:
+    window = SlidingWindow(2, 1.0)
+    assert window.earliest(0.0) == 0.0
+    window.record(0.0)
+    window.record(0.5)
+    assert window.earliest(0.6) == 1.0
+    window.record(1.0)
+    assert window.earliest(1.2) == 1.5
 
 
-def test_eleven_general_requests_sleep_once_for_a_tenth() -> None:
+def test_sliding_window_never_books_before_an_earlier_booking() -> None:
+    window = SlidingWindow(5, 1.0)
+    window.record(3.0)
+    assert window.earliest(1.0) == 3.0
+
+
+def test_eleventh_general_request_waits_a_full_second() -> None:
+    # A bucket refilling at 10/s let the eleventh request out after 0.1 s: 11 in one second.
     clock = FakeClock()
     limiter = RateLimiter(clock)
     for _ in range(11):
-        limiter.acquire("GET", "/api/v1/accounts")
-    assert clock.sleeps == [pytest.approx(0.1)]
+        limiter.acquire("GET", "/api/v1/markets")
+    assert clock.sleeps == [pytest.approx(1.0)]
+
+
+_WINDOWS = {
+    RequestKind.GENERAL: (10, 1.0),
+    RequestKind.SESSION: (1, 1.0),
+    RequestKind.TRADE: (1, 0.1),
+}
+
+
+def _send_all(requests: list[tuple[str, str]]) -> list[tuple[float, frozenset[RequestKind]]]:
+    clock = FakeClock()
+    limiter = RateLimiter(clock)
+    sends = []
+    for method, path in requests:
+        limiter.acquire(method, path)
+        sends.append((clock.monotonic(), classify(method, path)))
+    return sends
+
+
+def _assert_no_window_exceeded(sends: list[tuple[float, frozenset[RequestKind]]]) -> None:
+    for kind, (limit, window_s) in _WINDOWS.items():
+        times = [t for t, kinds in sends if kind in kinds]
+        for start in times:
+            # The tolerance keeps float sums such as 0.1 + 0.2 from counting a boundary send twice.
+            inside = [t for t in times if start <= t < start + window_s - 1e-9]
+            assert len(inside) <= limit, (kind, start, inside)
+
+
+def test_no_window_ever_exceeds_its_limit() -> None:
+    requests = [("GET", "/api/v1/markets")] * 40
+    for i, position in enumerate((3, 11, 25)):
+        requests.insert(position + i, ("POST", "/api/v1/session"))
+    for i, position in enumerate((1, 2, 9, 30, 31)):
+        requests.insert(position + i, ("POST", "/api/v1/positions"))
+    sends = _send_all(requests)
+    assert len(sends) == 48
+    _assert_no_window_exceeded(sends)
+
+
+def test_general_window_counts_the_delayed_login_at_its_send_time() -> None:
+    login = ("POST", "/api/v1/session")
+    sends = _send_all([login, login] + [("GET", "/api/v1/markets")] * 10)
+    assert sends[1][0] == pytest.approx(1.0)
+    general = [t for t, _ in sends if 1.0 <= t < 2.0 - 1e-9]
+    assert len(general) <= 10
+    _assert_no_window_exceeded(sends)
 
 
 def test_second_trade_waits_a_tenth() -> None:

@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -6,7 +7,7 @@ import pytest
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.error_mapping import error_for
 from capitalcom.application.ports import HttpRequest, HttpResponse
-from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
+from capitalcom.application.rate_limiter import RateLimiter, RequestKind, SlidingWindow
 from capitalcom.application.result import Err, Ok
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.domain.errors import (
@@ -174,12 +175,32 @@ def test_unencodable_body_is_validation_error_and_not_sent(body: dict[str, objec
 
 def test_throttle_waits_like_send() -> None:
     clock = FakeClock()
-    buckets = {kind: TokenBucket(1.0, 1) for kind in RequestKind}
+    windows = {kind: SlidingWindow(1, 1.0) for kind in RequestKind}
     dispatcher = Dispatcher(
-        FakeTransport([]), clock, RateLimiter(clock, buckets), RetryPolicy(), rand=lambda: 0.0
+        FakeTransport([]), clock, RateLimiter(clock, windows), RetryPolicy(), rand=lambda: 0.0
     )
     dispatcher.throttle("GET", "/api/v1/accounts")
     assert clock.sleeps == []
     dispatcher.throttle("GET", "/api/v1/accounts")
     assert clock.sleeps
     assert clock.sleeps[-1] > 0
+
+
+def test_retry_log_names_the_resource_but_not_the_deal(caplog: pytest.LogCaptureFixture) -> None:
+    # Contract runs log at INFO into public CI output; a deal id there is an account detail.
+    dispatcher, _, _ = make([response(429, headers={"Retry-After": "1"}), response(200, b"{}")])
+    with caplog.at_level(logging.INFO, logger="capitalcom"):
+        dispatcher.send(HttpRequest("DELETE", "/api/v1/positions/DEAL-SECRET-1"))
+    assert "DELETE /api/v1/positions/{id}" in caplog.text
+    assert "SECRET" not in caplog.text
+
+
+def test_retry_log_masks_the_id_inside_the_error_text(caplog: pytest.LogCaptureFixture) -> None:
+    # A transport error names the request it failed on, raw path included.
+    path = "/api/v1/confirms/REF-SECRET-1"
+    reset = TransportError(f"GET {path}: ConnectionError", reached_server=True)
+    dispatcher, _, _ = make([reset, response(200, b"{}")])
+    with caplog.at_level(logging.INFO, logger="capitalcom"):
+        dispatcher.send(HttpRequest("GET", path))
+    assert "GET /api/v1/confirms/{id}: ConnectionError" in caplog.text
+    assert "SECRET" not in caplog.text

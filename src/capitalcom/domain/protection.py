@@ -13,14 +13,37 @@ from capitalcom.domain.errors import ValidationError
 from capitalcom.domain.request_values import positive_quantity
 
 
-def _one_of(owner: str, **given: Decimal | int | None) -> tuple[str, Decimal]:
-    """Return the one ``given`` value that is set, as a positive ``Decimal``."""
+def _set_one_of(
+    target: object,
+    owner: str,
+    level: Decimal | int | None,
+    distance: Decimal | int | None,
+    amount: Decimal | int | None,
+) -> str:
+    """Store the one value given as a positive ``Decimal`` and the others as ``None``.
+
+    Returns the name of the field that was given.
+    """
+    given = {"level": level, "distance": distance, "amount": amount}
     chosen = [(name, value) for name, value in given.items() if value is not None]
     if len(chosen) != 1:
-        names = ", ".join(given)
-        raise ValidationError(f"{owner}: give exactly one of {names}")
+        raise ValidationError(f"{owner}: give exactly one of level, distance, amount")
     name, value = chosen[0]
-    return name, positive_quantity(value, f"{owner}.{name}")
+    stored = positive_quantity(value, f"{owner}.{name}")
+    for field_name in given:
+        object.__setattr__(target, field_name, stored if field_name == name else None)
+    return name
+
+
+def _amount_body(
+    prefix: str, level: Decimal | None, distance: Decimal | None, amount: Decimal | None
+) -> dict[str, Any]:
+    """The one ``<prefix>Level``, ``<prefix>Distance`` or ``<prefix>Amount`` key that is set."""
+    if level is not None:
+        return {f"{prefix}Level": level}
+    if distance is not None:
+        return {f"{prefix}Distance": distance}
+    return {f"{prefix}Amount": amount}
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -42,9 +65,7 @@ class StopLoss:
         guaranteed: bool = False,
         trailing: bool = False,
     ) -> None:
-        name, value = _one_of("stop", level=level, distance=distance, amount=amount)
-        for field_name in ("level", "distance", "amount"):
-            object.__setattr__(self, field_name, value if field_name == name else None)
+        name = _set_one_of(self, "stop", level, distance, amount)
         if not isinstance(guaranteed, bool) or not isinstance(trailing, bool):
             raise ValidationError("stop: guaranteed and trailing must be bools")
         if guaranteed and trailing:
@@ -56,12 +77,7 @@ class StopLoss:
 
     def to_body(self) -> dict[str, Any]:
         """The ``stop*`` keys of a request body."""
-        if self.level is not None:
-            body: dict[str, Any] = {"stopLevel": self.level}
-        elif self.distance is not None:
-            body = {"stopDistance": self.distance}
-        else:
-            body = {"stopAmount": self.amount}
+        body = _amount_body("stop", self.level, self.distance, self.amount)
         # Flags are sent only when set: the documentation says a guaranteed stop "cannot be
         # set" in hedging mode, and an explicit false is not worth finding out about.
         if self.guaranteed:
@@ -85,17 +101,11 @@ class TakeProfit:
         distance: Decimal | int | None = None,
         amount: Decimal | int | None = None,
     ) -> None:
-        name, value = _one_of("profit", level=level, distance=distance, amount=amount)
-        for field_name in ("level", "distance", "amount"):
-            object.__setattr__(self, field_name, value if field_name == name else None)
+        _set_one_of(self, "profit", level, distance, amount)
 
     def to_body(self) -> dict[str, Any]:
         """The ``profit*`` key of a request body."""
-        if self.level is not None:
-            return {"profitLevel": self.level}
-        if self.distance is not None:
-            return {"profitDistance": self.distance}
-        return {"profitAmount": self.amount}
+        return _amount_body("profit", self.level, self.distance, self.amount)
 
 
 def protection_body(stop: StopLoss | None, profit: TakeProfit | None) -> dict[str, Any]:

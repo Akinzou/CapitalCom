@@ -90,7 +90,7 @@ Instead it:
 ### Warnings, logging and exports
 
 - `DeprecationWarning` fires once per name and process, on the constructor and every public
-  method, with a link to `docs/migration.md`. `_headers` and `_request` are private and do
+  method, with a link to `docs/guides/migration.md`. `_headers` and `_request` are private and do
   not warn. `open_forex_position`'s warning names its JPY flaw: it scales distances by
   0.00001, so JPY pairs, quoted to three decimals, get distances 100 times too small.
 - `colored_log` logs under `capitalcom.client` without colours, and the module no longer calls

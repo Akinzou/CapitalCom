@@ -64,3 +64,10 @@ def test_preferences_with_fractional_leverage_are_rejected() -> None:
     }
     with pytest.raises(ResponseFormatError, match="current"):
         AccountPreferences.from_api(broken)
+
+
+def test_leverage_without_current_reports_missing() -> None:
+    with pytest.raises(ResponseFormatError) as caught:
+        Leverage.from_api({"available": [1, 2]}, "SHARES")
+    assert "leverages.SHARES.current" in str(caught.value)
+    assert "missing" in str(caught.value)

@@ -7,7 +7,7 @@ from capitalcom.application.api_client import ApiClient
 from capitalcom.application.confirmer import DealConfirmer
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.ports import HttpResponse
-from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
+from capitalcom.application.rate_limiter import RateLimiter, RequestKind, SlidingWindow
 from capitalcom.application.result import Err, Ok
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import Credentials, SessionManager
@@ -40,8 +40,8 @@ def make(
 ) -> tuple[DealConfirmer, FakeTransport, FakeClock]:
     clock = FakeClock()
     transport = FakeTransport([LOGIN, *script])
-    buckets = {kind: TokenBucket(1e9, 1_000_000) for kind in RequestKind}
-    dispatcher = Dispatcher(transport, clock, RateLimiter(clock, buckets), RetryPolicy())
+    windows = {kind: SlidingWindow(1_000_000, 1e-9) for kind in RequestKind}
+    dispatcher = Dispatcher(transport, clock, RateLimiter(clock, windows), RetryPolicy())
     session = SessionManager(
         dispatcher, clock, Credentials(Secret("confirm-key-0001"), "id", Secret("confirm-pw-0001"))
     )

@@ -141,6 +141,19 @@ def test_login_with_malformed_current_account_id_is_response_format_error() -> N
         result = parse_login(response(200, body, tokens))
         assert isinstance(result, Err), body
         assert isinstance(result.error, ResponseFormatError)
+        assert result.error.status == 200
+
+
+def test_malformed_current_account_id_names_the_field_and_the_problem() -> None:
+    tokens = {"CST": "c", "X-SECURITY-TOKEN": "x"}
+    for body, problem in (
+        (b'{"currentAccountId": ""}', "empty"),
+        (b'{"currentAccountId": 5}', "int"),
+    ):
+        result = parse_login(response(200, body, tokens))
+        assert isinstance(result, Err), body
+        assert "currentAccountId" in str(result.error)
+        assert problem in str(result.error)
 
 
 def test_login_grant_hides_tokens() -> None:

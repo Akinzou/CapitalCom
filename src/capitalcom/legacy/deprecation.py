@@ -6,7 +6,7 @@ import threading
 import warnings
 from pathlib import Path
 
-MIGRATION_URL = "https://github.com/Akinzou/CapitalCom/blob/master/docs/migration.md"
+MIGRATION_URL = "https://akinzou.github.io/CapitalCom/guides/migration/"
 
 # Module-level rather than per client: a bot that builds a client per trade must not get a
 # warning per trade, and code that skips __init__ still has the registry.

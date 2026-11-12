@@ -1,5 +1,6 @@
 """Stop-loss and take-profit values: each combination the server refuses cannot be built."""
 
+from collections.abc import Callable
 from decimal import Decimal
 
 import pytest
@@ -76,3 +77,34 @@ def test_protection_body_refuses_other_types() -> None:
         protection_body({"stopLevel": 1}, None)  # type: ignore[arg-type]
     with pytest.raises(ValidationError, match="profit"):
         protection_body(None, StopLoss(level=1))  # type: ignore[arg-type]
+
+
+_SHAPES = [
+    (
+        lambda: StopLoss(level=1),
+        "StopLoss(level=Decimal('1'), distance=None, amount=None,"
+        " guaranteed=False, trailing=False)",
+        {"stopLevel": Decimal(1)},
+    ),
+    (
+        lambda: StopLoss(distance=2, trailing=True),
+        "StopLoss(level=None, distance=Decimal('2'), amount=None, guaranteed=False, trailing=True)",
+        {"stopDistance": Decimal(2), "trailingStop": True},
+    ),
+    (
+        lambda: TakeProfit(amount=3),
+        "TakeProfit(level=None, distance=None, amount=Decimal('3'))",
+        {"profitAmount": Decimal(3)},
+    ),
+]
+
+
+@pytest.mark.parametrize(("build", "text", "body"), _SHAPES)
+def test_protection_values_keep_their_shape(
+    build: Callable[[], StopLoss | TakeProfit], text: str, body: dict[str, object]
+) -> None:
+    value = build()
+    assert repr(value) == text
+    assert value == build()
+    assert hash(value) == hash(build())
+    assert value.to_body() == body

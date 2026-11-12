@@ -90,6 +90,13 @@ demo reports still matches the pinned host, so drift shows up in CI.
   raises `StreamError` (a `TransportError`), with the last failure as `__cause__`, and
   closes.
 - A refused login or a refused key on resubscription is raised at once.
+- Giving up closes the socket at once but keeps what was read (2.0.0): inside `next()` the
+  buffered events come first, then the error, then iteration ends; a subscribe call that
+  gave up raises, and iteration then yields the events without raising again. Only an
+  explicit `close()` drops unread events.
+- A frame that cannot be decoded is queued as a `ResponseFormatError` at its position and
+  never ends an acknowledgement wait; if it was the awaited acknowledgement, the wait times
+  out into a `NETWORK` gap, since the answer cannot be known.
 - After a successful resubscription the stream yields one `Gap(since, until, reason)`:
   - `since` is the time of the last event delivered, or read before the drop. For a quote
     that is its server time, bounded by the local clock: a reader lagging behind the feed
@@ -98,8 +105,11 @@ demo reports still matches the pinned host, so drift shows up in CI.
     read. A gap never starts before the previous one ended;
   - events read before the drop come out before the `Gap`, and events from the new
     connection after it;
-  - the reason is `SERVER_CLOSED` when the server sent a close frame, `ACCOUNT_SWITCHED`
-    after an account change, and `NETWORK` otherwise.
+  - the reason is `ACCOUNT_SWITCHED` when the session moved to another account before the
+    reconnect, even if the switch came from another thread while a read blocked;
+    `SERVER_CLOSED` when the server started the close (its close frame came first); and
+    `NETWORK` otherwise, including a close our side started, such as the WebSocket library
+    closing on a protocol error.
 - Before an overdue keepalive answer is declared missing, frames already queued are read,
   with a grace of 1 s once the queue is empty. This keeps a slow consumer on a busy feed
   from reconnecting every five minutes.
@@ -123,11 +133,14 @@ this way in review. The stream's own ping, every 5 minutes
 with a 10 s answer timeout, detects a dead link instead. A half-open connection is therefore
 noticed within about 5 minutes and 10 seconds, and is reported as a `Gap`.
 
-TLS trusts what the REST transport trusts. The composition root asks `requests` itself
-(`Session.merge_environment_settings`), so `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` win
-over `session.verify` unless the session ignores the environment, exactly as for REST. A
-directory is used as `capath`; without any setting the bundle `requests` ships with is used.
-The system store alone would fail on installs where REST works.
+TLS trusts what the REST transport trusts. REST passes the session's CA bundle path on every
+call, so that path beats `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE`; the composition root asks
+`requests` (`Session.merge_environment_settings`) with that same explicit value, so the
+stream picks the same bundle. The environment applies only when the session names no bundle
+and trusts the environment. Letting the environment win for the stream alone would silently
+widen the trust a user narrowed on the session. A directory is used as `capath`; without any
+setting the bundle `requests` ships with is used. The system store alone would fail on
+installs where REST works.
 
 ### Logs never carry a token
 

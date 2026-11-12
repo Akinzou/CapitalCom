@@ -17,3 +17,6 @@ htmlcov/
 
 # Local agent scratch space
 .superpowers/
+
+# MkDocs build output
+/site/

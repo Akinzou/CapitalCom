@@ -5,7 +5,7 @@ from typing import Any
 import requests
 
 from capitalcom.api.composition import Core
-from capitalcom.application.logs import get_logger
+from capitalcom.application.logs import get_logger, loggable_path
 from capitalcom.domain.errors import CapitalComError, ValidationError
 from capitalcom.infrastructure.requests_transport import tls_verify
 from capitalcom.legacy.wiring import LEGACY_TIMEOUT
@@ -66,7 +66,10 @@ def send_raw(
             continue
         if response.status_code == 429:
             _log.warning(
-                "rate limited (429) on %s %s; waiting %.1fs", method, path, RATE_LIMIT_WAIT_S
+                "rate limited (429) on %s %s; waiting %.1fs",
+                method,
+                loggable_path(path),
+                RATE_LIMIT_WAIT_S,
             )
             core.clock.sleep(RATE_LIMIT_WAIT_S)
             continue

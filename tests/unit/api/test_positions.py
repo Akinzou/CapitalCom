@@ -11,7 +11,12 @@ import responses
 from capitalcom.api.client import CapitalCom
 from capitalcom.domain.confirmation import SizeAdjustedError
 from capitalcom.domain.enums import Direction
-from capitalcom.domain.errors import DealRejectedError, ValidationError
+from capitalcom.domain.errors import (
+    DealRejectedError,
+    OutcomeUnknownError,
+    ResponseFormatError,
+    ValidationError,
+)
 from capitalcom.domain.protection import StopLoss, TakeProfit
 from tests.unit.api.test_facade import DEMO, TOKENS
 from tests.unit.domain.test_market_details import btc_details
@@ -130,3 +135,35 @@ def test_list_and_get_parse_positions(api: responses.RequestsMock) -> None:
     positions = client().positions
     assert [p.deal_id for p in positions.list()] == ["P1", "P2"]
     assert positions.get("P1").market.epic == "USDJPY"
+
+
+@pytest.mark.parametrize("answer", [{}, {"dealReference": ""}, ["o_1"]])
+def test_a_trade_answer_without_a_deal_reference_is_an_unknown_outcome(
+    api: responses.RequestsMock, answer: object
+) -> None:
+    # The server accepted the request, so a position may exist even though nothing
+    # identifies it; a ResponseFormatError would read as "nothing happened".
+    api.post(POSITIONS, json=answer)
+    with pytest.raises(OutcomeUnknownError) as caught:
+        client().positions.open("BTCUSD", "BUY", Decimal("0.0001"))
+    assert (caught.value.method, caught.value.path) == ("POST", "/api/v1/positions")
+    assert isinstance(caught.value.__cause__, ResponseFormatError)
+
+
+def test_a_trade_answer_that_is_not_json_is_an_unknown_outcome(
+    api: responses.RequestsMock,
+) -> None:
+    api.post(POSITIONS, body="<html>proxy page</html>", status=200)
+    with pytest.raises(OutcomeUnknownError) as caught:
+        client().positions.open("BTCUSD", "BUY", Decimal("0.0001"))
+    assert isinstance(caught.value.__cause__, ResponseFormatError)
+
+
+def test_a_malformed_login_before_a_trade_is_not_an_unknown_outcome() -> None:
+    # The trade was never sent, so the caller may safely retry; OutcomeUnknownError would
+    # send them to check positions for a deal that cannot exist.
+    with responses.RequestsMock(assert_all_requests_are_fired=False) as mock:
+        mock.post(f"{DEMO}/api/v1/session", json={"currentAccountId": ""}, headers=TOKENS)
+        with pytest.raises(ResponseFormatError, match="currentAccountId"):
+            client().positions.open("BTCUSD", "BUY", Decimal("0.0001"))
+        assert sent(mock) == []

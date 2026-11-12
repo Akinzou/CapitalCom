@@ -80,7 +80,10 @@ def test_position_round_trip(demo_core: Core, btc: Market) -> None:
 def test_position_size_rules(demo_core: Core, btc: Market) -> None:
     positions = PositionsResource(demo_core)
     details, _ = btc_details(demo_core)
-    off_grid = btc.min_size * Decimal("1.5")
+    increment = details.dealing_rules.min_size_increment.value
+    off_grid = btc.min_size + increment / 2
+    # 1.5 x the minimum lands on the grid whenever the minimum is an even number of steps.
+    assert off_grid % increment != 0
     with pytest.raises(ValidationError, match="increment"):
         positions.open(EPIC, Direction.BUY, off_grid, instrument=details)
 

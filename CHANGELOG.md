@@ -19,7 +19,11 @@ All notable changes to this project are documented in this file. The format foll
   resubscribes, and reports every interruption as a `Gap`. It raises `SubscriptionError` for
   a refused key and `StreamError` when it gives up. TLS is always verified and the host is
   fixed by the library.
-- **Migration guide** in `docs/migration.md`, mapping every 1.x call to its 2.x equivalent.
+- **Documentation site** at <https://akinzou.github.io/CapitalCom/>: getting started, guides,
+  an errors and reliability page, the API reference and the design decisions. Its code
+  examples are files the test suite runs, and the README quick start is one of them.
+- **Migration guide** in `docs/guides/migration.md` (on the documentation site), mapping
+  every 1.x call to its 2.x equivalent.
 - **Typed errors.** Every error derives from `CapitalComError` (and from `Exception`).
   Server refusals are `ApiError` subclasses that carry `status` and `error_code`. A trade
   whose outcome is unknown after a timeout raises `OutcomeUnknownError` instead of being
@@ -97,3 +101,38 @@ All notable changes to this project are documented in this file. The format foll
 12. **Overriding is narrower.** The public methods still call each other through `self`, as in
     1.0.4. Overriding `_request` or `login_session` in a subclass no longer changes how they
     reach the server, and the constructor no longer calls `login_session`.
+
+### Fixed
+
+- **Request bursts.** More than 10 requests in one second now wait for the window to free up
+  instead of drawing a `429`. The limits are counted as sliding windows at send time (ADR 0006).
+- **Clearer format errors.** An account preference without the leverage in force says the field
+  is missing instead of "expected an integer, got NoneType", and a malformed
+  `currentAccountId` in a login answer names the field and what is wrong with it.
+- **Malformed stream frames.** A frame that cannot be decoded no longer aborts a subscribe or
+  closes the stream during a reconnect. It is raised as `ResponseFormatError` at its position
+  among the events, and iteration may go on. If the unreadable frame was the awaited
+  acknowledgement itself, the wait times out into a reconnect and a `NETWORK` gap.
+- **Events before a give-up.** When the stream gives up (five failed reconnects, or a login or
+  key refused while resubscribing), the events it had already read are no longer lost.
+  Inside `next()` they come first, then the error, then iteration ends. If a subscribe call
+  raised the error, iteration yields the events and ends without raising it again.
+  `stream.closed` is `True` at once, so `cc.stream.connect()` may open a new stream.
+  `close()` still drops what was not read.
+- **Gap reasons.** A gap is `SERVER_CLOSED` only when the server started the close, and
+  `NETWORK` when our side did. A drop after the session moved to another account, even one
+  switched from another thread, is `ACCOUNT_SWITCHED`.
+- **Type checkers.** The package ships a `py.typed` marker, so a type checker reads its
+  annotations instead of treating it as untyped, and `from capitalcom import CapitalCom` (and
+  every other 2.x name) is an explicit re-export, which `mypy --strict` requires.
+- **A trade answer that cannot be read.** A trade the server answered with success but with
+  a body that is not JSON, or with no deal reference, raises `OutcomeUnknownError` (the
+  parse error is its cause) instead of `ResponseFormatError`: the deal may exist. The same
+  holds for watchlist changes, preferences and top-ups; login, logout and account switches
+  keep `ResponseFormatError` (ADR 0006).
+- **Stream CA bundle.** The stream trusts the same CA bundle as REST: a bundle path on the
+  session now beats `REQUESTS_CA_BUNDLE`, as it always did for REST (ADR 0012).
+- **Ids in logs.** Retry and rate-limit log records show `/api/v1/positions/{id}` instead of
+  the deal, order, confirmation or watchlist id.
+- **Deprecation link.** The `CapitalClient` deprecation warning points to the migration guide
+  on the documentation site.

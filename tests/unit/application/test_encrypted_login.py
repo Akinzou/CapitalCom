@@ -9,7 +9,7 @@ from capitalcom.api.composition import build_core
 from capitalcom.application import logs
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.ports import HttpResponse
-from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
+from capitalcom.application.rate_limiter import RateLimiter, RequestKind, SlidingWindow
 from capitalcom.application.result import Err, Ok
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import SessionManager
@@ -36,8 +36,8 @@ def make(script: list[HttpResponse | TransportError]) -> tuple[SessionManager, F
     CALLS.clear()
     clock = FakeClock()
     transport = FakeTransport(script)
-    buckets = {kind: TokenBucket(1e9, 1_000_000) for kind in RequestKind}
-    dispatcher = Dispatcher(transport, clock, RateLimiter(clock, buckets), RetryPolicy())
+    windows = {kind: SlidingWindow(1_000_000, 1e-9) for kind in RequestKind}
+    dispatcher = Dispatcher(transport, clock, RateLimiter(clock, windows), RetryPolicy())
     return SessionManager(dispatcher, clock, CREDS, encryptor=stub_encryptor), transport
 
 

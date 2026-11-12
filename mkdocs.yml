@@ -1,0 +1,101 @@
+# Only features Zensical documents as supported, so the move before Material's end of life
+# changes the build command, not the pages (ADR 0013).
+site_name: capitalcom
+site_description: Client for the Capital.com REST and WebSocket API (demo and live)
+site_url: https://akinzou.github.io/CapitalCom/
+repo_url: https://github.com/Akinzou/CapitalCom
+repo_name: Akinzou/CapitalCom
+edit_uri: ""
+strict: true
+exclude_docs: |
+  superpowers/
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.sections
+    - navigation.top
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.snippets:
+      check_paths: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            show_root_heading: false
+            show_root_toc_entry: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            separate_signature: true
+            show_signature_annotations: true
+            filters: ["!^_"]
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Sessions and accounts: guides/sessions.md
+      - Markets and prices: guides/markets.md
+      - Trading: guides/trading.md
+      - Streaming: guides/streaming.md
+      - Errors and reliability: guides/reliability.md
+      - Migration from 1.x: guides/migration.md
+  - API reference:
+      - Client and namespaces:
+          - The client: reference/client.md
+          - cc.session: reference/session.md
+          - cc.accounts: reference/accounts.md
+          - cc.history: reference/history.md
+          - cc.positions: reference/positions.md
+          - cc.orders: reference/orders.md
+          - cc.markets: reference/markets.md
+          - cc.prices: reference/prices.md
+          - cc.sentiment: reference/sentiment.md
+          - cc.watchlists: reference/watchlists.md
+          - cc.stream: reference/stream.md
+      - Values and errors:
+          - Errors: reference/errors.md
+          - Enumerations: reference/enums.md
+          - Accounts and session: reference/accounts-values.md
+          - History: reference/history-values.md
+          - Markets: reference/markets-values.md
+          - Market details: reference/market-details.md
+          - Prices: reference/prices-values.md
+          - Sentiment: reference/sentiment-values.md
+          - Watchlists: reference/watchlists-values.md
+          - Order requests: reference/orders-values.md
+          - Stop-loss and take-profit: reference/protection.md
+          - Confirmations: reference/confirmation.md
+          - Positions: reference/positions-values.md
+          - Working orders: reference/working-orders.md
+          - Stream events: reference/streaming-values.md
+          - Retry policy: reference/retry.md
+          - CapitalClient (1.x, deprecated): reference/legacy.md
+  - Design decisions:
+      - adr/0001-record-architecture-decisions.md
+      - adr/0002-tooling-and-quality-gates.md
+      - adr/0003-layering-and-composition-root.md
+      - adr/0004-licensing.md
+      - adr/0005-error-model.md
+      - adr/0006-retries-and-idempotency.md
+      - adr/0007-partial-close-and-confirmation-facts.md
+      - adr/0008-session-context-and-read-models.md
+      - adr/0009-market-data.md
+      - adr/0010-trading.md
+      - adr/0011-legacy-layer.md
+      - adr/0012-streaming.md
+      - adr/0013-documentation-toolchain.md
+  - Changelog: changelog.md
+  - License: license.md

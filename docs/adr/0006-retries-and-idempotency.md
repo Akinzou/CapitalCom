@@ -20,7 +20,7 @@ issues new tokens, and a repeated logout is answered 401, which logout treats as
 
 | Outcome | GET (and session calls) | other POST / PUT / DELETE |
 |---|---|---|
-| 2xx | done | done |
+| 2xx | done | done; a body that cannot be read is `OutcomeUnknownError` |
 | 429 | retry | retry (refused before acting) |
 | 429 with `Retry-After` > 60 s | `RateLimitError` at once | `RateLimitError` at once |
 | 401 | re-login once, resend | re-login once, resend (refused before acting) |
@@ -37,13 +37,29 @@ issues new tokens, and a repeated logout is answered 401, which logout treats as
 - When retries run out, the last attempt's error is returned.
 - TLS errors count as "may have been sent": `requests` raises the same `SSLError` for a failed
   handshake and for a connection dropped while the response was read.
+- The 401 row is the authenticated calls' (`ApiClient`): a 401 there means the session
+  expired, so one fresh login and one resend follow. A 401 on the login itself means the
+  credentials were refused and is returned as `AuthenticationError`, never answered with
+  another login; a 401 on logout counts as logged out.
+- A request in the right-hand column answered 2xx took effect on the server, so a body that
+  is not JSON, or a trade answer without a usable `dealReference`, becomes
+  `OutcomeUnknownError` with the cause chained, never `ResponseFormatError`: the trade may
+  exist. Session calls (login, logout, account switch) are in the GET column and keep
+  `ResponseFormatError`, and so does a login that fails before the request is sent.
+- Retry and rate-limit log records show account ids in paths as `{id}`
+  (`/api/v1/positions/{id}`), also inside the logged error text; raised errors keep the
+  real path for the caller.
 - Once a deal is submitted, any failure while polling `/confirms` other than "not ready yet"
   becomes `OutcomeUnknownError` (with the cause chained), never the raw poll error.
 - A request body that cannot be encoded exactly fails with `ValidationError` before a
   rate-limit slot is spent.
-- Rate limiting is client-side token buckets: GENERAL (10/s, burst 10), TRADE (10/s, burst 1)
-  and SESSION (1/s, burst 1). A request reserves a slot in every bucket it belongs to under a
-  lock and sleeps outside it, so concurrent threads queue in order.
+- Rate limiting is client-side sliding windows: GENERAL (10 sends in any 1 s), TRADE (1 in any
+  0.1 s) and SESSION (1 in any 1 s). Token buckets were replaced in 2.0.0: a bucket of capacity
+  10 refilling at 10/s let about 19 requests out in the first second, more than the server
+  allows. Under a lock, a request books the earliest time valid in every window it belongs to
+  and records that same time in all of them, so a login delayed by SESSION counts in GENERAL
+  when it is really sent. Times are booked in order per window (FIFO), and the caller sleeps
+  outside the lock, so concurrent threads queue in order.
 - Session tokens are renewed after 570 s idle (the server expires them at 600 s). One lock
   covers check-and-login, so threads that find an expired session cause one login.
 

@@ -133,3 +133,15 @@ def test_token_expiry_follows_a_patched_time(api: responses.RequestsMock) -> Non
     client._request("GET", "/api/v1/accounts")
     with mock.patch("capitalcom.client.time.time", return_value=4_000_000_000.0):
         assert abs(client.token_expiry - 4_000_000_600.0) < 5
+
+
+def test_the_429_warning_names_the_resource_but_not_the_deal(
+    api: responses.RequestsMock, caplog: pytest.LogCaptureFixture
+) -> None:
+    position = f"{DEMO}/api/v1/positions/DEAL-SECRET-1"
+    api.delete(position, status=429)
+    api.delete(position, json={"dealReference": "o_1"})
+    with mock.patch("capitalcom.client.time.sleep"), caplog.at_level("WARNING", "capitalcom"):
+        legacy()._request("DELETE", "/api/v1/positions/DEAL-SECRET-1")
+    assert "DELETE /api/v1/positions/{id}" in caplog.text
+    assert "SECRET" not in caplog.text

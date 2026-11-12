@@ -215,7 +215,7 @@ def test_slow_consumer_does_not_miss_a_queued_keepalive_ack() -> None:
 def test_drain_hands_over_events_buffered_by_a_failed_request() -> None:
     link, _, _ = open_link([quote_frame("A")])
     assert isinstance(link.request(SUBSCRIBE, {"epics": ["GOLD"]}, ["GOLD"]), Err)
-    assert [e.value.epic for e in link.drain()] == ["A"]
+    assert [e.value.epic for e in link.drain() if isinstance(e, Event)] == ["A"]
     assert link.drain() == []
 
 
