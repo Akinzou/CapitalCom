@@ -5,10 +5,11 @@ is queued as a ``Gap`` behind the events that arrived before it, so nothing is l
 """
 
 import random
+import threading
 from collections import deque
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from typing import TypeAlias
+from typing import TypeAlias, TypeVar
 
 from capitalcom.application import stream_requests as requests
 from capitalcom.application.ports import Clock, StreamTransport
@@ -34,6 +35,7 @@ MAX_RECONNECTS = 5
 RECONNECT_POLICY = RetryPolicy(max_attempts=MAX_RECONNECTS, base_delay_s=1.0, max_delay_s=16.0)
 
 StreamEvent: TypeAlias = Quote | Candle | Gap
+T = TypeVar("T")
 
 
 class StreamClosedError(ValidationError):
@@ -65,6 +67,7 @@ class StreamSession:
         self._last_event_at = clock.now_utc()
         self._account: str | None = None
         self._closed = False
+        self._busy = threading.Lock()
 
     @property
     def closed(self) -> bool:
@@ -123,6 +126,9 @@ class StreamSession:
 
     def next_event(self) -> Result[StreamEvent, CapitalComError]:
         """Block until the next quote, bar or gap; reconnects happen in here."""
+        return self._exclusive(self._next_event)
+
+    def _next_event(self) -> Result[StreamEvent, CapitalComError]:
         while True:
             if self._closed:
                 return Err(StreamClosedError())
@@ -157,7 +163,24 @@ class StreamSession:
             self._link.close()
             self._link = None
 
+    def _exclusive(
+        self, call: Callable[[], Result[T, CapitalComError]]
+    ) -> Result[T, CapitalComError]:
+        # One socket cannot be read by two threads, and an ack read by the other thread
+        # would be lost; a second caller is refused instead of corrupting the stream.
+        if not self._busy.acquire(blocking=False):
+            return Err(
+                ValidationError("use a stream from one thread; only close() may come from another")
+            )
+        try:
+            return call()
+        finally:
+            self._busy.release()
+
     def _change(self, plan: Callable[[], requests.Change | None]) -> Result[None, CapitalComError]:
+        return self._exclusive(lambda: self._apply(plan))
+
+    def _apply(self, plan: Callable[[], requests.Change | None]) -> Result[None, CapitalComError]:
         link = self._usable()
         if isinstance(link, Err):
             return link
@@ -181,6 +204,9 @@ class StreamSession:
         if isinstance(failure, TransportError):
             # The keys stay in the set, so the reconnect resubscribes them with the rest.
             return self._reconnect(_reason(failure))
+        if added:
+            # Never acknowledged: kept, they would make a retry a silent no-op.
+            self._subs.discard(keys)
         return self._fail(failure)
 
     def _usable(self) -> Result[StreamLink, CapitalComError]:
@@ -218,14 +244,19 @@ class StreamSession:
             # Re-checked around the slow steps: a close from another thread must not leave a
             # socket open behind it, nor be answered with a fresh subscription.
             resubscribed = self._resubscribe(link) if not self._closed else Ok(None)
-            if self._closed:
-                link.close()
-                return Err(StreamClosedError())
             if isinstance(resubscribed, Ok):
                 self._link = link
+                # Checked after the link is stored: a close() in between either sees the link
+                # and closes it, or is seen here.
+                if self._closed:
+                    link.close()
+                    self._link = None
+                    return Err(StreamClosedError())
                 self._account = self._session.current_account_id or self._account
                 until = max(self._clock.now_utc(), since)
                 self._ready.append(Gap(since, until, reason))
+                # The next gap starts after this one, not again from before it.
+                self._last_event_at = until
                 return Ok(None)
             link.close()
             last = resubscribed.error
@@ -246,10 +277,12 @@ class StreamSession:
         return Ok(None)
 
     def _received_at(self, event: Quote | Candle) -> datetime:
-        # The server's time of the event, bounded by now: a reader that lags behind the feed
-        # would otherwise date the gap from when it read the last event, not when it came,
-        # and the events lost in between would fall outside the gap.
-        return min(self._clock.now_utc(), event.time)
+        # A quote's server time, bounded by now: a reader that lags behind the feed would
+        # otherwise date the gap from when it read the last quote, and the quotes lost in
+        # between would fall outside it. A bar's time is its start, which for an hourly bar
+        # is up to an hour old, so a bar counts from when it was read.
+        now = self._clock.now_utc()
+        return now if isinstance(event, Candle) else min(now, event.time)
 
     def _fail(self, error: CapitalComError) -> Err[CapitalComError]:
         if isinstance(error, AuthenticationError):
