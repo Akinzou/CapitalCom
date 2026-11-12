@@ -12,6 +12,11 @@ All notable changes to this project are documented in this file. The format foll
   or a 5xx answer to a trade or another change, the error now carries that failure as its
   `__cause__`, shown in the traceback, as the other cases already did.
 
+### Documentation
+
+- The streaming guide says that the stream stays open after `ResponseFormatError`, so a
+  reader catches it and keeps reading.
+
 ## [2.0.0] — 2026-11-12
 
 ### Added

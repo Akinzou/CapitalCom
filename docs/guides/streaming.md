@@ -121,5 +121,8 @@ After a give-up `stream.closed` is `True`, and `cc.stream.connect()` opens a new
 subscriptions are not carried over.
 
 A frame that cannot be decoded raises `ResponseFormatError` from `next()` at its position
-among the events. Frames of kinds the library does not know are skipped
-([ADR 0012](../adr/0012-streaming.md)).
+among the events. The stream stays open, also when the frame came during a reconnect: catch
+the error and keep reading, and a new `for` loop over the same stream goes on with the next
+event (`tests/unit/api/test_stream_errors.py`,
+`tests/unit/application/test_stream_malformed.py`). Frames of kinds the library does not know
+are skipped ([ADR 0012](../adr/0012-streaming.md)).
