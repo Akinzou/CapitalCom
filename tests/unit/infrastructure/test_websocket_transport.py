@@ -4,6 +4,7 @@ import datetime
 import ipaddress
 import logging
 import ssl
+import sys
 import threading
 from collections.abc import Iterator
 from pathlib import Path
@@ -92,14 +93,26 @@ def _handle(connection: ServerConnection) -> None:
 
 
 @pytest.fixture(scope="module")
-def server(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, Path]]:
+def tls(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, ssl.SSLContext]:
     cert, key = _certificate(tmp_path_factory.mktemp("tls"))
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(cert, key)
-    # The server logs the frames it receives, tokens included; the library is what is tested.
-    quiet = logging.getLogger("tests.websocket_server")
-    quiet.disabled = True
-    with serve(_handle, HOST, 0, ssl=context, logger=quiet) as running:
+    return cert, context
+
+
+@pytest.fixture
+def server(tls: tuple[Path, ssl.SSLContext]) -> Iterator[tuple[str, Path]]:
+    # A server per test: a connection one test leaves behind (a refused certificate, a close
+    # the client never answered) cannot delay the next test's handshake.
+    cert, context = tls
+    # The server's own log goes to stderr, shown by pytest on a failure; it never reaches
+    # caplog, whose text the token test inspects.
+    server_log = logging.getLogger("tests.websocket_server")
+    server_log.propagate = False
+    if not server_log.handlers:
+        server_log.addHandler(logging.StreamHandler(sys.stderr))
+    server_log.setLevel(logging.INFO)
+    with serve(_handle, HOST, 0, ssl=context, logger=server_log) as running:
         thread = threading.Thread(target=running.serve_forever, daemon=True)
         thread.start()
         port = running.socket.getsockname()[1]
@@ -142,6 +155,7 @@ def test_server_close_reached_server_true(server: tuple[str, Path]) -> None:
     assert isinstance(received, Err)
     assert received.error.reached_server
     assert isinstance(connected.value.send("late"), Err)
+    connected.value.close()
 
 
 def test_ws_scheme_refused() -> None:

@@ -87,12 +87,15 @@ from capitalcom import CapitalCom, Candle, Gap, Quote, Resolution
 
 with CapitalCom(api_key, identifier, password) as cc, cc.stream.connect() as stream:
     stream.subscribe_quotes(["EURUSD", "GOLD"])
-    stream.subscribe_ohlc(["EURUSD"], [Resolution.MINUTE_5])   # classic bars by default
-    for event in stream:                    # Quote | Candle | Gap
+    stream.subscribe_ohlc(["EURUSD"], [Resolution.MINUTE_5])  # classic bars by default
+    for event in stream:  # Quote | Candle | Gap
         match event:
-            case Quote():  ...
-            case Candle(): ...
-            case Gap():    ...              # the stream was down from .since to .until
+            case Quote():
+                ...
+            case Candle():
+                ...
+            case Gap():
+                ...  # the stream was down from .since to .until
 ```
 
 - `cc.stream.connect()` returns a `Stream`. It is a context manager and an iterator. One
