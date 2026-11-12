@@ -19,6 +19,9 @@ All notable changes to this project are documented in this file. The format foll
   resubscribes, and reports every interruption as a `Gap`. It raises `SubscriptionError` for
   a refused key and `StreamError` when it gives up. TLS is always verified and the host is
   fixed by the library.
+- **Documentation site** at <https://akinzou.github.io/CapitalCom/>: getting started, guides,
+  an errors and reliability page, the API reference and the design decisions. Its code
+  examples are files the test suite runs, and the README quick start is one of them.
 - **Migration guide** in `docs/guides/migration.md` (on the documentation site), mapping
   every 1.x call to its 2.x equivalent.
 - **Typed errors.** Every error derives from `CapitalComError` (and from `Exception`).
@@ -119,3 +122,7 @@ All notable changes to this project are documented in this file. The format foll
 - **Gap reasons.** A gap is `SERVER_CLOSED` only when the server started the close, and
   `NETWORK` when our side did. A drop after the session moved to another account, even one
   switched from another thread, is `ACCOUNT_SWITCHED`.
+- **Type checkers and the package root.** `from capitalcom import CapitalCom` (and every other
+  2.x name) is now an explicit re-export, which `mypy --strict` requires.
+- **Deprecation link.** The `CapitalClient` deprecation warning points to the migration guide
+  on the documentation site.

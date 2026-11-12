@@ -1,14 +1,14 @@
 [project]
 name = "capitalcom"
-version = "2.0.0.dev0"
-description = "Client for Capital.com REST API (demo and real)"
+version = "2.0.0rc1"
+description = "Client for the Capital.com REST and WebSocket API (demo and live)"
 authors = [{name = "Wiktor Jeleń", email = "wiktor.dev@yelon.ovh"}]
 readme = "README.md"
 requires-python = ">=3.11"
 license = "PolyForm-Noncommercial-1.0.0"
 license-files = ["LICENSE", "LICENSE-ADDITIONAL-PERMISSION"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -28,6 +28,9 @@ streaming = ["websockets>=15"]
 
 [project.urls]
 homepage = "https://github.com/Akinzou/CapitalCom"
+Documentation = "https://akinzou.github.io/CapitalCom/"
+Changelog = "https://github.com/Akinzou/CapitalCom/blob/master/CHANGELOG.md"
+Issues = "https://github.com/Akinzou/CapitalCom/issues"
 discord = "https://discord.gg/BARYa55KS8"
 
 [dependency-groups]
@@ -66,6 +69,11 @@ filterwarnings = ["ignore:CapitalClient:DeprecationWarning"]
 target-version = "py311"
 line-length = 100
 src = ["src", "tests"]
+
+[tool.ruff.format]
+# Site pages pull their code in with pymdownx.snippets ("--8<--" lines), which the formatter
+# would rewrite as Python; the code itself lives in docs/examples/*.py and is formatted there.
+exclude = ["docs/**/*.md"]
 
 [tool.ruff.lint]
 select = [

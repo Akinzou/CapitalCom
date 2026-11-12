@@ -93,8 +93,10 @@ jobs:
         with:
           python-version: "3.14"
       - run: |
-          python -m pip install --upgrade pip build
+          python -m pip install --upgrade pip build twine
           python -m build
+      # The README is the PyPI page; --strict fails on markup PyPI would render as raw text.
+      - run: twine check --strict dist/*
       # Installs the wheel into a clean venv and imports it from outside the checkout, so a
       # packaging mistake cannot be hidden by the source tree on sys.path.
       - name: Clean-install smoke test
