@@ -2,6 +2,11 @@
 
 from enum import Enum, StrEnum
 
+# The demo probe (ADR 0012) found the same streaming host on demo and live. The host is pinned
+# rather than read from the session's streamEndpoint, so a changed or injected field can
+# never send the session tokens to a host this library did not choose.
+STREAM_URL = "wss://api-streaming-capital.backend-capital.com/connect"
+
 
 class Direction(StrEnum):
     """Trade direction."""
@@ -20,6 +25,11 @@ class Environment(Enum):
     def rest_url(self) -> str:
         """Base URL of the REST API, without a trailing slash."""
         return str(self.value)
+
+    @property
+    def stream_url(self) -> str:
+        """URL of the WebSocket stream; one host serves both environments."""
+        return STREAM_URL
 
 
 class Resolution(StrEnum):

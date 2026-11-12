@@ -5,6 +5,8 @@ for 1.x with ``except Exception`` keeps working. Errors that come from a server 
 from ``ApiError`` and carry the HTTP status and Capital.com's ``errorCode`` (ADR 0005).
 """
 
+from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any
 
 BODY_LIMIT = 500
@@ -100,6 +102,38 @@ class TransportError(CapitalComError):
     def reached_server(self) -> bool:
         """False only when the request provably never left this machine (e.g. connect error)."""
         return self._reached_server
+
+
+class StreamError(TransportError):
+    """The stream gave up reconnecting; ``__cause__`` holds the last failure."""
+
+
+class SubscriptionError(CapitalComError):
+    """The stream refused a subscription, or left a requested key out of its answer.
+
+    It is not an ``ApiError``: a WebSocket answer has no HTTP status. ``refused`` maps each
+    key to the server's text, or to ``"MISSING"`` when the answer did not mention the key.
+    """
+
+    def __init__(self, refused: Mapping[str, str], error_code: str | None) -> None:
+        self._refused = MappingProxyType(dict(refused))
+        self._error_code = error_code
+        listed = "; ".join(f"{key}: {text}" for key, text in self._refused.items())
+        super().__init__(
+            f"subscription refused ({error_code or 'no error code'}): {listed or '(no keys)'}",
+            dict(refused),
+            error_code,
+        )
+
+    @property
+    def refused(self) -> Mapping[str, str]:
+        """Each refused key with the server's text, or ``"MISSING"``."""
+        return self._refused
+
+    @property
+    def error_code(self) -> str | None:
+        """The frame's ``errorCode`` when the whole request was refused."""
+        return self._error_code
 
 
 class OutcomeUnknownError(CapitalComError):
