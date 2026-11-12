@@ -67,13 +67,11 @@ class Dispatcher:
                 return last
             if attempt + 1 < self._policy.max_attempts:
                 delay = backoff_delay(self._policy, attempt, retry_after, self._rand)
-                _log.info(
-                    "retrying %s %s in %.2fs: %s",
-                    request.method,
-                    loggable_path(request.path),
-                    delay,
-                    last.error,
-                )
+                # The error text may name the request too (a transport error does), so the
+                # raw path is masked there as well; the raised error keeps it for the caller.
+                shown = loggable_path(request.path)
+                reason = str(last.error).replace(request.path, shown)
+                _log.info("retrying %s %s in %.2fs: %s", request.method, shown, delay, reason)
                 self._clock.sleep(delay)
         return last
 

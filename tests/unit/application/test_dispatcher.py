@@ -193,3 +193,14 @@ def test_retry_log_names_the_resource_but_not_the_deal(caplog: pytest.LogCapture
         dispatcher.send(HttpRequest("DELETE", "/api/v1/positions/DEAL-SECRET-1"))
     assert "DELETE /api/v1/positions/{id}" in caplog.text
     assert "SECRET" not in caplog.text
+
+
+def test_retry_log_masks_the_id_inside_the_error_text(caplog: pytest.LogCaptureFixture) -> None:
+    # A transport error names the request it failed on, raw path included.
+    path = "/api/v1/confirms/REF-SECRET-1"
+    reset = TransportError(f"GET {path}: ConnectionError", reached_server=True)
+    dispatcher, _, _ = make([reset, response(200, b"{}")])
+    with caplog.at_level(logging.INFO, logger="capitalcom"):
+        dispatcher.send(HttpRequest("GET", path))
+    assert "GET /api/v1/confirms/{id}: ConnectionError" in caplog.text
+    assert "SECRET" not in caplog.text

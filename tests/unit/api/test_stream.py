@@ -3,6 +3,7 @@
 import itertools
 import json
 import sys
+from typing import Any
 
 import pytest
 
@@ -11,6 +12,7 @@ from capitalcom.api.stream import Stream, StreamResource
 from capitalcom.application.ports import StreamTransport
 from capitalcom.application.result import Err, Result
 from capitalcom.application.session import Credentials
+from capitalcom.application.stream_gaps import kept_from_drop
 from capitalcom.domain.enums import STREAM_URL, Environment, Resolution
 from capitalcom.domain.errors import (
     StreamError,
@@ -268,3 +270,20 @@ def test_connect_allowed_after_give_up_while_events_remain() -> None:
     with streams.connect() as fresh:
         assert not fresh.closed
     assert len(list(stream)) == 1
+
+
+def test_a_close_from_another_thread_during_a_drop_ends_iteration_cleanly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    streams, _, core = resource([_drain_script(), REFUSED])
+    stream = streams.connect()
+    stream.subscribe_quotes(["GOLD"])
+
+    def closed_inside_the_window(*args: Any) -> Any:
+        stream.close()  # another thread's close() landing between the check and the use
+        return kept_from_drop(*args)
+
+    target = "capitalcom.application.stream_session.kept_from_drop"
+    monkeypatch.setattr(target, closed_inside_the_window)
+    _dropped_with_two_quotes_in_the_drain(core)
+    assert list(stream) == []  # no AttributeError, and nothing delivered after the close

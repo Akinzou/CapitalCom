@@ -58,6 +58,7 @@ class StreamSession:
         self._rand = rand
         self._subs = Subscriptions()
         self._link: StreamLink | None = None
+        self._discarded = False  # close() was called: nothing read may be delivered after it
         # Errors wait in line too: an undecodable frame at its position among the events
         # (see StreamLink), and the error a stream gave up with behind what it had read.
         self._ready: deque[StreamEvent | CapitalComError] = deque()
@@ -165,11 +166,12 @@ class StreamSession:
 
     def close(self) -> None:
         """Close the socket and drop what was not read: the caller asked to stop."""
-        self._closed = True
+        self._closed = self._discarded = True
         self._ready.clear()
-        if self._link is not None:
-            self._link.close()
-            self._link = None
+        # Taken into a local first: the reader thread may drop the same link concurrently.
+        link, self._link = self._link, None
+        if link is not None:
+            link.close()
 
     def _give_up(self) -> None:
         # Unlike close(), keeps what was read: the caller did not ask to drop it, and a
@@ -180,7 +182,7 @@ class StreamSession:
     def _queue(self, error: CapitalComError) -> None:
         # Inside next_event an error waits behind what was read before it. A close from
         # another thread emptied the queue and needs no place in it.
-        if not isinstance(error, StreamClosedError):
+        if not isinstance(error, StreamClosedError) and not self._discarded:
             self._ready.append(error)
 
     def _exclusive(
@@ -236,17 +238,19 @@ class StreamSession:
             reconnected = self._reconnect(GapReason.ACCOUNT_SWITCHED)
             if isinstance(reconnected, Err):
                 return reconnected
-        assert self._link is not None  # noqa: S101 - a successful reconnect sets the link
-        return Ok(self._link)
+        link = self._link  # a close() from another thread may have taken it meanwhile
+        return Err(StreamClosedError()) if link is None else Ok(link)
 
     def _drop_link(self) -> datetime:
         """Close the link, keeping what it buffered; return when the last kept event was read."""
         since = self._last_event_at
-        if self._link is not None:
-            kept, since = kept_from_drop(self._link.drain(), since, self._clock.now_utc())
-            self._ready.extend(kept)
-            self._link.close()
-            self._link = None
+        # Read once into a local, so a close() from another thread cannot empty it mid-use.
+        link, self._link = self._link, None
+        if link is not None:
+            kept, since = kept_from_drop(link.drain(), since, self._clock.now_utc())
+            if not self._discarded:
+                self._ready.extend(kept)
+            link.close()
         return since
 
     def _switched(self) -> bool:

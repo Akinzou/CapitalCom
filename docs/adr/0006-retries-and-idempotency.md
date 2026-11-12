@@ -41,10 +41,14 @@ issues new tokens, and a repeated logout is answered 401, which logout treats as
   expired, so one fresh login and one resend follow. A 401 on the login itself means the
   credentials were refused and is returned as `AuthenticationError`, never answered with
   another login; a 401 on logout counts as logged out.
-- A request that changes state and is answered 2xx took effect on the server, so a body that
+- A request in the right-hand column answered 2xx took effect on the server, so a body that
   is not JSON, or a trade answer without a usable `dealReference`, becomes
   `OutcomeUnknownError` with the cause chained, never `ResponseFormatError`: the trade may
-  exist. A login that fails before the request is sent keeps its own error.
+  exist. Session calls (login, logout, account switch) are in the GET column and keep
+  `ResponseFormatError`, and so does a login that fails before the request is sent.
+- Retry and rate-limit log records show account ids in paths as `{id}`
+  (`/api/v1/positions/{id}`), also inside the logged error text; raised errors keep the
+  real path for the caller.
 - Once a deal is submitted, any failure while polling `/confirms` other than "not ready yet"
   becomes `OutcomeUnknownError` (with the cause chained), never the raw poll error.
 - A request body that cannot be encoded exactly fails with `ValidationError` before a

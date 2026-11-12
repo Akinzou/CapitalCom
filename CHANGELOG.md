@@ -128,7 +128,8 @@ All notable changes to this project are documented in this file. The format foll
 - **A trade answer that cannot be read.** A trade the server answered with success but with
   a body that is not JSON, or with no deal reference, raises `OutcomeUnknownError` (the
   parse error is its cause) instead of `ResponseFormatError`: the deal may exist. The same
-  holds for every other call that changes state (ADR 0006).
+  holds for watchlist changes, preferences and top-ups; login, logout and account switches
+  keep `ResponseFormatError` (ADR 0006).
 - **Stream CA bundle.** The stream trusts the same CA bundle as REST: a bundle path on the
   session now beats `REQUESTS_CA_BUNDLE`, as it always did for REST (ADR 0012).
 - **Ids in logs.** Retry and rate-limit log records show `/api/v1/positions/{id}` instead of

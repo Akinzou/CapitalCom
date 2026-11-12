@@ -23,7 +23,6 @@ from tests.unit.trading_payloads import position_item
 ACCOUNT_ID = "ACC-SECRET-0193"
 POSITION_ID = "POS-SECRET-0055"
 ORDER_ID = "ORD-SECRET-0077"
-REJECT_FROM = Decimal(50)  # sizes at or above this are rejected, as an unaffordable deal is
 
 _API = f"{DEMO}/api/v1"
 _Reply = tuple[int, dict[str, str], str]
@@ -81,8 +80,6 @@ class FakeDemo:
             outcome |= {"status": "DELETED" if working else "CLOSED", "affectedDeals": []}
         elif request.method == "PUT":
             outcome |= {"status": "AMENDED", "affectedDeals": []}
-        elif size >= REJECT_FROM:
-            outcome |= {"dealStatus": "REJECTED", "rejectReason": "RISK_CHECK", "affectedDeals": []}
         if working and request.method == "POST":
             outcome["dealId"] = ORDER_ID
         self._confirms[reference] = outcome

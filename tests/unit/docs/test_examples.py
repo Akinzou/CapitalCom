@@ -1,5 +1,6 @@
 """The documented examples are code: each one runs offline, and the README shows the real one."""
 
+import json
 import re
 import runpy
 from collections.abc import Iterator
@@ -74,6 +75,20 @@ def test_errors_example_treats_an_unconfirmed_deal_as_possibly_open(
     out = capsys.readouterr().out
     assert "may exist" in out
     assert "failed" not in out
+
+
+def test_errors_example_trades_only_the_minimum_size(
+    demo: responses.RequestsMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A recipe people copy must not open the largest position the market allows: any
+    # error branch that does not close it would leave it open.
+    runpy.run_path(str(ERRORS), run_name="__main__")
+    opened = [
+        json.loads(c.request.body or "{}")["size"]
+        for c in demo.calls
+        if c.request.method == "POST" and (c.request.url or "").endswith("/positions")
+    ]
+    assert opened == [0.0001]
 
 
 def test_readme_quickstart_is_the_example() -> None:

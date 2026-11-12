@@ -35,15 +35,17 @@ def main() -> None:
         # --8<-- [end:validation]
 
         # --8<-- [start:deal]
-        too_large = details.dealing_rules.max_deal_size.value
+        size = details.dealing_rules.min_deal_size.value
         try:
-            opened = cc.positions.open("BTCUSD", Direction.BUY, too_large)
+            opened = cc.positions.open("BTCUSD", Direction.BUY, size)
         except DealRejectedError as error:
             # The server answered: no deal was made, and sending again will not change that.
             print(f"rejected: {error.reason}")
         except SizeAdjustedError as error:
-            # A deal was made, with another size; manage error.confirmation.
+            # A deal was made, with another size: close it, or keep managing it.
             print(f"booked {error.confirmation.size} instead of {error.requested}")
+            if error.confirmation.position_id is not None:
+                cc.positions.close(error.confirmation.position_id)
         except (OutcomeUnknownError, ConfirmationTimeoutError):
             # Sent, but not confirmed either way: the deal may exist. Look before sending it
             # again. ConfirmationTimeoutError is not an OutcomeUnknownError; catch both here.

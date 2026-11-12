@@ -80,12 +80,10 @@ class RateLimiter:
         with self._lock:
             now = self._clock.monotonic()
             windows = [self._windows[kind] for kind in classify(method, path)]
-            # One window pushing the time later can make another window's answer later too,
-            # so iterate to the fixed point; the same time is then recorded in all of them,
-            # which keeps a login delayed by SESSION counted in GENERAL when it is really sent.
-            send_at = now
-            while (later := max(w.earliest(send_at) for w in windows)) != send_at:
-                send_at = later
+            # Each window answers max(t, its own bound), so the latest answer is valid in every
+            # window at once. That same time is recorded in all of them, which keeps a login
+            # delayed by SESSION counted in GENERAL when it is really sent.
+            send_at = max(w.earliest(now) for w in windows)
             for window in windows:
                 window.record(send_at)
         # Sleeping outside the lock lets other threads book their own later times meanwhile.
