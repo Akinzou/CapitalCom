@@ -9,7 +9,7 @@ from capitalcom.application.api_client import ApiClient
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.logs import get_logger
 from capitalcom.application.ports import HttpRequest, HttpResponse
-from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
+from capitalcom.application.rate_limiter import RateLimiter, RequestKind, SlidingWindow
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import Credentials, SessionManager, SessionTokens
@@ -30,9 +30,9 @@ def make(
 ) -> tuple[ApiClient, SessionManager, FakeTransport, FakeClock]:
     clock = FakeClock()
     transport = FakeTransport(script)
-    # Unthrottled buckets keep the fake clock still, so the expiry arithmetic stays exact.
-    buckets = {kind: TokenBucket(1e9, 1_000_000) for kind in RequestKind}
-    dispatcher = Dispatcher(transport, clock, RateLimiter(clock, buckets), RetryPolicy())
+    # Unthrottled windows keep the fake clock still, so the expiry arithmetic stays exact.
+    windows = {kind: SlidingWindow(1_000_000, 1e-9) for kind in RequestKind}
+    dispatcher = Dispatcher(transport, clock, RateLimiter(clock, windows), RetryPolicy())
     session = SessionManager(dispatcher, clock, CREDS)
     return ApiClient(dispatcher, session), session, transport, clock
 
@@ -154,8 +154,8 @@ class SlowTransport(FakeTransport):
 def test_concurrent_expiry_logs_in_once() -> None:
     clock = FakeClock()
     transport = SlowTransport([login_ok()])
-    buckets = {kind: TokenBucket(1e9, 1_000_000) for kind in RequestKind}
-    dispatcher = Dispatcher(transport, clock, RateLimiter(clock, buckets), RetryPolicy())
+    windows = {kind: SlidingWindow(1_000_000, 1e-9) for kind in RequestKind}
+    dispatcher = Dispatcher(transport, clock, RateLimiter(clock, windows), RetryPolicy())
     session = SessionManager(dispatcher, clock, CREDS)
     barrier = threading.Barrier(8)
     results: list[object] = []

@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.ports import HttpResponse
-from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
+from capitalcom.application.rate_limiter import RateLimiter, RequestKind, SlidingWindow
 from capitalcom.application.result import Ok
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import Credentials, SessionManager
@@ -31,9 +31,9 @@ def make_session(
     """
     named = list(accounts) or ["A"] * logins
     http = FakeTransport([login_ok(n, account) for n, account in enumerate(named, start=1)])
-    # Unthrottled buckets keep the fake clock still, so the keepalive arithmetic stays exact.
-    buckets = {kind: TokenBucket(1e9, 1_000_000) for kind in RequestKind}
-    dispatcher = Dispatcher(http, clock, RateLimiter(clock, buckets), RetryPolicy())
+    # Unthrottled windows keep the fake clock still, so the keepalive arithmetic stays exact.
+    windows = {kind: SlidingWindow(1_000_000, 1e-9) for kind in RequestKind}
+    dispatcher = Dispatcher(http, clock, RateLimiter(clock, windows), RetryPolicy())
     session = SessionManager(dispatcher, clock, CREDS)
     session.tokens()
     return session, http

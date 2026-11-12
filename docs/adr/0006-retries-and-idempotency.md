@@ -41,9 +41,13 @@ issues new tokens, and a repeated logout is answered 401, which logout treats as
   becomes `OutcomeUnknownError` (with the cause chained), never the raw poll error.
 - A request body that cannot be encoded exactly fails with `ValidationError` before a
   rate-limit slot is spent.
-- Rate limiting is client-side token buckets: GENERAL (10/s, burst 10), TRADE (10/s, burst 1)
-  and SESSION (1/s, burst 1). A request reserves a slot in every bucket it belongs to under a
-  lock and sleeps outside it, so concurrent threads queue in order.
+- Rate limiting is client-side sliding windows: GENERAL (10 sends in any 1 s), TRADE (1 in any
+  0.1 s) and SESSION (1 in any 1 s). Token buckets were replaced in 2.0.0: a bucket of capacity
+  10 refilling at 10/s let about 19 requests out in the first second, more than the server
+  allows. Under a lock, a request books the earliest time valid in every window it belongs to
+  and records that same time in all of them, so a login delayed by SESSION counts in GENERAL
+  when it is really sent. Times are booked in order per window (FIFO), and the caller sleeps
+  outside the lock, so concurrent threads queue in order.
 - Session tokens are renewed after 570 s idle (the server expires them at 600 s). One lock
   covers check-and-login, so threads that find an expired session cause one login.
 

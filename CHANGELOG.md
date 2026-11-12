@@ -97,3 +97,8 @@ All notable changes to this project are documented in this file. The format foll
 12. **Overriding is narrower.** The public methods still call each other through `self`, as in
     1.0.4. Overriding `_request` or `login_session` in a subclass no longer changes how they
     reach the server, and the constructor no longer calls `login_session`.
+
+### Fixed
+
+- **Request bursts.** More than 10 requests in one second now wait for the window to free up
+  instead of drawing a `429`. The limits are counted as sliding windows at send time (ADR 0006).
