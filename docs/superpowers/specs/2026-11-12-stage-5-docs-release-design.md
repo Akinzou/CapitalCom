@@ -1,6 +1,6 @@
 # capitalcom 2.0 — Documentation, debt sweep and release (stage 5)
 
-Status: draft · Date: 2026-11-12 · Branch: `rewrite/stage-5-docs-release`
+Status: draft, builder-checked · Date: 2026-11-12 · Branch: `rewrite/stage-5-docs-release`
 Extends `2026-11-11-capitalcom-v2-design.md` (§9 stage 5) and
 `2026-11-12-streaming-addendum.md`. Where they disagree, this document wins for stage 5 only.
 
@@ -63,11 +63,8 @@ MkDocs 1.6 with Material for MkDocs 9.8 and `mkdocstrings-python`, pinned below 
   reference engine is the same on either path.
 - Zensical reads `mkdocs.yml` but is pre-1.0.
 
-MkDocs 1.6 + Material is chosen because:
-
-- `mkdocs build --strict` gives a broken-link gate today;
-- the stack is mature;
-- the pin keeps a MkDocs 2 release from breaking the build.
+MkDocs 1.6 + Material is chosen because it is mature, `mkdocs build --strict` gives a
+broken-link gate today, and the pin keeps a MkDocs 2 release from breaking the build.
 
 The site configuration stays inside what Zensical documents as compatible. Moving to Zensical
 before May 2027 then changes the build command and dependencies, not the pages; the ADR names
@@ -103,10 +100,8 @@ This page is the reason the site exists for a reader with real money. It covers:
 - which calls the library retries itself and which it deliberately does not;
 - what to do on `OutcomeUnknownError`, `SizeAdjustedError`, `DealRejectedError` and
   `ConfirmationTimeoutError`, each with a short recipe;
-- timeouts, rate limits and `429` handling;
-- session renewal;
-- TLS (always verified, CA bundle for proxies);
-- token masking in logs;
+- timeouts, rate limits and `429` handling, and session renewal;
+- TLS (always verified, CA bundle for proxies) and token masking in logs;
 - thread safety of `CapitalCom` and of `Stream`.
 
 Every statement cites the ADR or test that backs it. Where the builder finds a gap between
@@ -127,29 +122,31 @@ claim out. It is never papered over in prose.
 
 ### 5.5 Docstrings
 
-The API reference is only as good as the docstrings. A test asserts that each of these has a
-docstring:
-
-- every name exported from the package root;
-- every public method and property of those names;
-- every public method and property of the `CapitalCom` namespaces.
-
-The builder fills in whatever that test finds missing.
+The API reference is only as good as the docstrings. A test asserts a docstring on every name
+exported from the package root, and on every public method and property of those names and of
+the `CapitalCom` namespaces. The builder fills in whatever it finds missing.
 
 ### 5.6 Build and hosting
 
 - CI gets a `docs` job running `mkdocs build --strict`. Broken links and unresolved
   references fail it.
-- A separate workflow publishes the site to GitHub Pages through the official Pages actions.
-  - It runs on a pushed final release tag (`v*` without a pre-release suffix), and on manual
-    dispatch from `master` for documentation fixes between releases.
+- **Where it lives (my call):** `https://akinzou.github.io/CapitalCom/`. This is `site_url`, it
+  is the target of the README's absolute links, and it goes into `[project.urls]` as
+  `Documentation`.
+- **Publishing:** a separate workflow publishes to GitHub Pages through the official Pages
+  actions.
+  - It runs on every `v*` tag (release candidates included), after PyPI publishing has
+    succeeded.
+  - It can also be started by hand from `master`, for documentation fixes.
   - Only that job gets `pages: write` and `id-token: write`.
-  - Deploying on every push to `master` was rejected: the site would document 2.0 while
-    `pip install capitalcom` still installs 1.0.4.
-- The owner enables Pages with source "GitHub Actions" in the repository settings, once.
-- The site URL goes into `[project.urls]` as `Documentation`.
-- The 300-line limit applies to every page and example. The existing file-length test
-  already covers tracked files.
+  - Deploying on every push to `master` was rejected: the site would describe code that is
+    not on PyPI.
+- **Install line during the release-candidate window:** the site and the README both say
+  `pip install --pre capitalcom`. No link is dead, and no reader gets 1.0.4 under a 2.x quick
+  start.
+- **Owner's one-time setup:** enable Pages with source "GitHub Actions", and allow `v*` tags in
+  the `github-pages` environment.
+- **Length limit:** 300 lines per page and example, enforced by the existing file-length test.
 
 ## 6. Debt sweep
 
@@ -212,14 +209,21 @@ is the point, and caching the result would add state that brings the reader noth
 
 ### 6.2 REST (behaviour)
 
-4. **Rate limiter.** The `GENERAL` bucket is charged when a slot is reserved, not when the
-   request is sent. A login held back by the `SESSION` bucket can therefore make 11 requests
-   in one second and draw a `429`.
-   - Invariant after the fix, measured at send time on the clock port: no bucket ever sends
-     more requests in any 1-second span than its limit, including when a login is delayed by
-     the `SESSION` bucket.
-   - A test drives that case.
-   - ADR 0006 is updated.
+4. **Rate limiter (my call: sliding windows).** Today each limit is a token bucket charged
+   when a slot is reserved. That allows two things beyond the published limits. A login held
+   back by the `SESSION` bucket has already taken its `GENERAL` token. And a full `GENERAL`
+   bucket (burst 10, refill 10/s) lets about 19 requests through in the first second.
+   - The fix: each limit becomes "at most N sends in any window W":
+     - `GENERAL`: 10 per 1 s;
+     - `TRADE`: 1 per 0.1 s;
+     - `SESSION`: 1 per 1 s.
+   - A request gets the earliest send time that satisfies every limit it belongs to, and that
+     one time is recorded in each of them.
+   - Invariant, on the clock port: no limit ever sees more than N sends in any window W.
+     Tests cover a burst of 11 and a login delayed by `SESSION`.
+   - Steady throughput is unchanged at 10/s. Only bursts above the published limit now wait
+     instead of risking a `429`. This goes in the changelog, and ADR 0006's limiter section is
+     rewritten.
 5. **Missing leverage field.** A missing `Leverage.current` reports "expected an integer, got
    NoneType". It must report the field as missing, like every other required field.
 
@@ -245,59 +249,52 @@ is the point, and caching the result would add state that brings the reader noth
 
 ## 7. Release (my call: a release candidate first)
 
-1. **Package metadata.**
+PyPI never lets a version be re-uploaded. A packaging mistake in `2.0.0` itself would reach
+every unpinned 1.x user on their next upgrade and could only be fixed with `2.0.1`.
+
+1. **Metadata.**
    - Version `2.0.0rc1`.
    - Classifier `Development Status :: 5 - Production/Stable`.
    - A description that mentions the WebSocket.
    - `[project.urls]` with `Documentation`, `Changelog` and `Issues`.
    - The changelog lists the §6.1 and §6.2 fixes.
-2. **README rendering check.** `twine check --strict` runs in CI on the built distribution,
-   so the README renders on PyPI.
-3. **README install line.** Until `2.0.0` is out, it reads `pip install --pre capitalcom`, so
-   a reader on GitHub does not get 1.0.4 under a 2.x quick start. The final-release PR drops
-   `--pre`.
-4. **Release candidate.** After the stage 5 PR merges, and only with the owner's consent, the
+   - `twine check --strict` runs in CI on the built distribution, so the README renders on
+     PyPI.
+2. **Release candidate.** After the stage 5 PR merges, and with the owner's consent, the
    `v2.0.0rc1` tag is pushed and the existing publish workflow uploads it.
-   - `pip install capitalcom` does not pick up a pre-release, so 1.x users are untouched.
-   - The trusted publisher on PyPI must be set up first. That step is the owner's.
-5. **Smoke test on the published package.** A manually dispatched job in the contract
-   workflow installs a given version from PyPI into a clean environment. It then runs the
-   quick start and the legacy round trip against demo.
-6. **Final release.** If the smoke test passes, a small PR does three things:
+   - `pip install capitalcom` skips pre-releases, so 1.x users are untouched.
+   - The PyPI trusted publisher must be set up first (owner's step).
+3. **Smoke test.** A manually dispatched job in the contract workflow installs a given
+   version from PyPI into a clean environment. It runs the quick start and the legacy round
+   trip against demo.
+4. **Final release.** If the smoke test passes, a small PR:
    - sets the version to `2.0.0`;
    - dates the changelog;
-   - drops `--pre` from the README.
+   - drops `--pre` from the README and the site.
 
-   After it merges, and with the owner's consent, the `v2.0.0` tag is pushed, which also
-   publishes the site. A failure is fixed and shipped as `rc2`, not as `2.0.0`.
-
-Why a candidate comes first:
-
-- PyPI never lets a version be re-uploaded.
-- A packaging mistake in `2.0.0` itself would reach every unpinned 1.x user on their next
-  upgrade.
-- It could then only be fixed with a `2.0.1`.
+   After it merges, and with the owner's consent, the `v2.0.0` tag is pushed. A failure is
+   fixed and shipped as `rc2`, not as `2.0.0`.
 
 ## 8. Constraints
 
-- Branch `rewrite/stage-5-docs-release` and one PR. The flow is the same as every stage:
-  local gates, then review, then PR, then green CI and contract runs.
-- Merging and every tag push need the owner's consent.
-- The gates are the same as before:
+- Branch `rewrite/stage-5-docs-release` and one PR. The flow is the same as every stage: local
+  gates, review, PR, green CI and contract runs. Merging and every tag push need the owner's
+  consent.
+- Gates as before:
   - `ruff check .` and `ruff format --check .`;
   - `mypy --strict`;
   - `pytest` with coverage `fail_under = 95`;
   - Semgrep: ERROR findings block, WARNING findings are reported in the PR;
   - the file-length test.
-- No account ids, balances, deal ids or tokens in CI logs, examples or the site.
-- Contract runs use the demo host only.
+- No account ids, balances, deal ids or tokens in CI logs, examples or the site. Contract
+  runs use the demo host only.
 
 ## 9. Left to the builder
 
-- Wording and order of the pages, beyond §5.2 and §5.3.
-- Theme settings: colours, navigation tabs, search.
-- Which demo market the quick start trades, as long as its contract run skips cleanly when the
-  market is closed.
-- The exact mechanism for §6.1 and for §6.2 item 4, as long as the behaviour above holds and
-  the ADRs are updated.
-- How the docs examples fake the server: the existing `tests/fakes.py` or `responses`.
+- Wording and order of the pages beyond §5.2 and §5.3.
+- Theme settings.
+- The demo market the quick start trades, as long as its contract run skips when the market
+  is closed.
+- The mechanism for §6.1 and §6.2 item 4, as long as the behaviour above holds and the ADRs
+  are updated.
+- How the docs examples fake the server.
