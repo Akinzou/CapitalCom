@@ -23,6 +23,8 @@ dependencies = ["requests>=2.32.4"]
 [project.optional-dependencies]
 # 44.0.1 is the first release without CVE-2024-26130 and CVE-2024-12797.
 encryption = ["cryptography>=44.0.1"]
+# 15.0 is the first release whose sync client has the recv(timeout=) the stream relies on.
+streaming = ["websockets>=15"]
 
 [project.urls]
 homepage = "https://github.com/Akinzou/CapitalCom"
@@ -39,6 +41,8 @@ dev = [
     "responses>=0.25",
     "ruff>=0.8",
     "types-requests>=2.32",
+    # The streaming extra, for the same reason as cryptography above.
+    "websockets>=15",
 ]
 
 [build-system]
