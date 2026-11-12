@@ -7,19 +7,15 @@ is queued as a ``Gap`` behind the events that arrived before it, so nothing is l
 import random
 from collections import deque
 from collections.abc import Callable, Sequence
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
+from capitalcom.application import stream_requests as requests
 from capitalcom.application.ports import Clock, StreamTransport
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.retry import RetryPolicy, backoff_delay
 from capitalcom.application.session import SessionManager
-from capitalcom.application.stream_frames import (
-    OHLC_SUBSCRIBE,
-    OHLC_UNSUBSCRIBE,
-    QUOTES_SUBSCRIBE,
-    QUOTES_UNSUBSCRIBE,
-)
 from capitalcom.application.stream_link import AckTimeoutError, StreamLink
+from capitalcom.application.stream_requests import resubscribe_requests
 from capitalcom.domain.enums import Resolution
 from capitalcom.domain.errors import (
     AuthenticationError,
@@ -30,16 +26,13 @@ from capitalcom.domain.errors import (
     ValidationError,
 )
 from capitalcom.domain.streaming import Candle, CandleType, Gap, GapReason, Quote
-from capitalcom.domain.subscriptions import OhlcKey, Subscriptions
+from capitalcom.domain.subscriptions import Subscriptions
 
 MAX_RECONNECTS = 5
 # 1, 2, 4, 8, then 16 s, each with equal jitter (addendum 5.3).
 RECONNECT_POLICY = RetryPolicy(max_attempts=MAX_RECONNECTS, base_delay_s=1.0, max_delay_s=16.0)
-_ORDER = {resolution: index for index, resolution in enumerate(Resolution)}
 
 StreamEvent: TypeAlias = Quote | Candle | Gap
-# A change is (destination, payload, keys the ack must cover, whether the keys were added).
-_Change: TypeAlias = tuple[str, dict[str, Any], list[str], bool]
 
 
 class StreamSession:
@@ -92,11 +85,11 @@ class StreamSession:
 
     def subscribe_quotes(self, epics: Sequence[str]) -> Result[None, CapitalComError]:
         """Subscribe quotes of the epics not subscribed yet."""
-        return self._change(lambda: self._subscribe_quotes(epics))
+        return self._change(lambda: requests.subscribe_quotes(self._subs, epics))
 
     def unsubscribe_quotes(self, epics: Sequence[str]) -> Result[None, CapitalComError]:
         """Stop quotes of subscribed epics."""
-        return self._change(lambda: self._unsubscribe_quotes(epics))
+        return self._change(lambda: requests.unsubscribe_quotes(self._subs, epics))
 
     def subscribe_ohlc(
         self,
@@ -105,7 +98,9 @@ class StreamSession:
         candle_type: CandleType | str,
     ) -> Result[None, CapitalComError]:
         """Subscribe bars of each epic in each resolution, for the keys not subscribed yet."""
-        return self._change(lambda: self._subscribe_ohlc(epics, resolutions, candle_type))
+        return self._change(
+            lambda: requests.subscribe_ohlc(self._subs, epics, resolutions, candle_type)
+        )
 
     def unsubscribe_ohlc(
         self,
@@ -114,7 +109,9 @@ class StreamSession:
         candle_types: Sequence[CandleType | str] | None,
     ) -> Result[None, CapitalComError]:
         """Stop bars of the epics; ``None`` means every resolution or candle type."""
-        return self._change(lambda: self._unsubscribe_ohlc(epics, resolutions, candle_types))
+        return self._change(
+            lambda: requests.unsubscribe_ohlc(self._subs, epics, resolutions, candle_types)
+        )
 
     def next_event(self) -> Result[StreamEvent, CapitalComError]:
         """Block until the next quote, bar or gap; reconnects happen in here."""
@@ -146,7 +143,7 @@ class StreamSession:
             self._link.close()
             self._link = None
 
-    def _change(self, plan: Callable[[], _Change | None]) -> Result[None, CapitalComError]:
+    def _change(self, plan: Callable[[], requests.Change | None]) -> Result[None, CapitalComError]:
         link = self._usable()
         if isinstance(link, Err):
             return link
@@ -171,46 +168,6 @@ class StreamSession:
             # The keys stay in the set, so the reconnect resubscribes them with the rest.
             return self._reconnect(_reason(failure))
         return self._fail(failure)
-
-    def _subscribe_quotes(self, epics: Sequence[str]) -> _Change | None:
-        new = list(self._subs.add_quotes(epics))
-        return (QUOTES_SUBSCRIBE, {"epics": new}, new, True) if new else None
-
-    def _unsubscribe_quotes(self, epics: Sequence[str]) -> _Change:
-        gone = list(self._subs.remove_quotes(epics))
-        return (QUOTES_UNSUBSCRIBE, {"epics": gone}, gone, False)
-
-    def _subscribe_ohlc(
-        self,
-        epics: Sequence[str],
-        resolutions: Sequence[Resolution | str],
-        candle_type: CandleType | str,
-    ) -> _Change | None:
-        new = self._subs.add_ohlc(epics, resolutions, candle_type)
-        if not new:
-            return None
-        # Every key this payload implies is in the set: the epics and resolutions come from
-        # the new keys, which are a subset of the caller's epics x resolutions.
-        payload = {
-            "epics": list(dict.fromkeys(k.epic for k in new)),
-            "resolutions": [r.value for r in dict.fromkeys(k.resolution for k in new)],
-            "type": new[0].candle_type.value,
-        }
-        return (OHLC_SUBSCRIBE, payload, [k.wire() for k in new], True)
-
-    def _unsubscribe_ohlc(
-        self,
-        epics: Sequence[str],
-        resolutions: Sequence[Resolution | str] | None,
-        candle_types: Sequence[CandleType | str] | None,
-    ) -> _Change:
-        gone = self._subs.remove_ohlc(epics, resolutions, candle_types)
-        payload: dict[str, Any] = {"epics": list(dict.fromkeys(k.epic for k in gone))}
-        if resolutions is not None:
-            payload["resolutions"] = [Resolution(r).value for r in resolutions]
-        if candle_types is not None:
-            payload["types"] = [CandleType(t).value for t in candle_types]
-        return (OHLC_UNSUBSCRIBE, payload, [k.wire() for k in gone], False)
 
     def _usable(self) -> Result[StreamLink, CapitalComError]:
         if self._closed or self._link is None:
@@ -257,34 +214,11 @@ class StreamSession:
         return Err(error)
 
     def _resubscribe(self, link: StreamLink) -> Result[None, CapitalComError]:
-        quotes = list(self._subs.quotes)
-        requests: list[tuple[str, dict[str, Any], list[str]]] = []
-        if quotes:
-            requests.append((QUOTES_SUBSCRIBE, {"epics": quotes}, quotes))
-        # One frame per exact resolution set and candle type: a frame for epics x resolutions
-        # would also subscribe pairs the caller has removed.
-        groups: dict[tuple[tuple[Resolution, ...], CandleType], list[str]] = {}
-        for (epic, candle), resolutions in self._ohlc_by_epic().items():
-            groups.setdefault((resolutions, candle), []).append(epic)
-        for (resolutions, candle), epics in groups.items():
-            payload = {
-                "epics": epics,
-                "resolutions": [r.value for r in resolutions],
-                "type": candle.value,
-            }
-            keys = [OhlcKey(e, r, candle).wire() for e in epics for r in resolutions]
-            requests.append((OHLC_SUBSCRIBE, payload, keys))
-        for destination, payload, keys in requests:
+        for destination, payload, keys in resubscribe_requests(self._subs):
             sent = link.request(destination, payload, keys)
             if isinstance(sent, Err):
                 return Err(sent.error)
         return Ok(None)
-
-    def _ohlc_by_epic(self) -> dict[tuple[str, CandleType], tuple[Resolution, ...]]:
-        found: dict[tuple[str, CandleType], list[Resolution]] = {}
-        for key in self._subs.ohlc:
-            found.setdefault((key.epic, key.candle_type), []).append(key.resolution)
-        return {k: tuple(sorted(v, key=_ORDER.__getitem__)) for k, v in found.items()}
 
     def _fail(self, error: CapitalComError) -> Err[CapitalComError]:
         if isinstance(error, AuthenticationError):
