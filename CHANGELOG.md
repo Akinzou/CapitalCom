@@ -19,7 +19,8 @@ All notable changes to this project are documented in this file. The format foll
   resubscribes, and reports every interruption as a `Gap`. It raises `SubscriptionError` for
   a refused key and `StreamError` when it gives up. TLS is always verified and the host is
   fixed by the library.
-- **Migration guide** in `docs/migration.md`, mapping every 1.x call to its 2.x equivalent.
+- **Migration guide** in `docs/guides/migration.md` (on the documentation site), mapping
+  every 1.x call to its 2.x equivalent.
 - **Typed errors.** Every error derives from `CapitalComError` (and from `Exception`).
   Server refusals are `ApiError` subclasses that carry `status` and `error_code`. A trade
   whose outcome is unknown after a timeout raises `OutcomeUnknownError` instead of being
