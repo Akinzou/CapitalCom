@@ -1,5 +1,10 @@
-# CapitalCom [![Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fakinzou.github.io%2FCapitalCom%2Fbadges%2Fcoverage.json&query=%24.percent_covered_display&suffix=%25&label=coverage&logo=pytest&logoColor=white&color=brightgreen)](https://github.com/Akinzou/CapitalCom/actions/workflows/pages.yml) [![CI](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml) ![PyPI](https://img.shields.io/pypi/v/capitalcom) ![Python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white) ![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-lightgrey.svg) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
+# CapitalCom [![Code Coverage](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fakinzou.github.io%2FCapitalCom%2Fbadges%2Fcoverage.json&query=%24.percent_covered_display&suffix=%25&label=Code%20Coverage&logo=pytest&logoColor=white&color=brightgreen)](https://github.com/Akinzou/CapitalCom/actions/workflows/pages.yml)
+
+[![CI](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml/badge.svg)](https://github.com/Akinzou/CapitalCom/actions/workflows/ci.yml) [![PyPI](https://img.shields.io/pypi/v/capitalcom)](https://pypi.org/project/capitalcom/) ![Python](https://img.shields.io/badge/python-3.11%2B-blue?logo=python&logoColor=white) [![PyPI Downloads](https://static.pepy.tech/badge/capitalcom)](https://pepy.tech/projects/capitalcom)
+
 [![Discord](https://img.shields.io/badge/Join_us_on-Discord-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/BARYa55KS8)
+
+[![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-lightgrey.svg)](#license)
 
 A Python client for the [Capital.com](https://capital.com) REST and WebSocket API, for demo
 and live accounts. It logs in and keeps the session alive, places trades and waits for their

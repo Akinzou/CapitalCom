@@ -47,14 +47,17 @@ def test_coverage_badge_reads_the_file_the_site_publishes() -> None:
     # The number comes from the test run in the site build; a badge pointing anywhere else
     # would show "resource not found" on the project page instead of the coverage.
     assert SITE_URL is not None
-    badge = re.search(
-        r"\[!\[Coverage\]\((https://img\.shields\.io/badge/dynamic/json\?[^)\s]+)\)\]\(([^)]+)\)",
-        README,
+    # The title carries this badge and nothing else; the others sit on the lines below it.
+    badge = re.fullmatch(
+        r"# CapitalCom \[!\[Code Coverage\]\((https://img\.shields\.io/badge/dynamic/json\?"
+        r"[^)\s]+)\)\]\(([^)]+)\)",
+        README.splitlines()[0],
     )
-    assert badge is not None, "README has no linked dynamic coverage badge"
+    assert badge is not None, "the title line is not the title plus the coverage badge"
     # The link leads to the runs that measured the number, so a reader can check it.
     assert badge.group(2).endswith("/actions/workflows/pages.yml")
     query = parse_qs(urlparse(badge.group(1)).query)
     assert query["url"] == [SITE_URL.group(1) + BADGE_FILE]
     assert query["query"] == ["$.percent_covered_display"]
+    assert query["label"] == ["Code Coverage"]
     assert f"site/{BADGE_FILE}" in PAGES_WORKFLOW
