@@ -206,19 +206,26 @@ def test_library_keepalive_is_off(
     assert seen["logger"] is logging.getLogger("capitalcom.websocket")
 
 
-def test_default_trust_store_is_the_one_rest_uses(
+def test_without_a_bundle_the_requests_bundle_is_trusted(
     server: tuple[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # The environment is read once, by the composition root, with requests' own rules.
     url, cert = server
-    monkeypatch.delenv("CURL_CA_BUNDLE", raising=False)
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(cert))
-    connected = WebsocketTransport().connect(f"{url}/echo")
-    assert isinstance(connected, Ok)
-    connected.value.close()
-    monkeypatch.delenv("REQUESTS_CA_BUNDLE")
     seen = _capture(monkeypatch, "_default_context")
     WebsocketTransport().connect(f"{url}/echo")
     assert seen["cafile"] == DEFAULT_CA_BUNDLE_PATH
+
+
+def test_a_failed_close_is_logged_as_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+    class BrokenStack:
+        def close(self) -> None:
+            raise OSError("socket already gone")
+
+    connection = websocket_transport.WebsocketConnection(None, BrokenStack())  # type: ignore[arg-type]
+    with caplog.at_level(logging.WARNING, logger="capitalcom"):
+        connection.close()
+    assert any("closing the stream socket failed" in r.getMessage() for r in caplog.records)
 
 
 def test_ca_directory_is_used_as_capath(

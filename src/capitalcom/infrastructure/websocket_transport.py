@@ -1,7 +1,6 @@
 """WebSocket transport over the ``websockets`` synchronous client (the ``streaming`` extra)."""
 
 import logging
-import os
 import ssl
 from contextlib import ExitStack
 from pathlib import Path
@@ -32,6 +31,8 @@ _log.addFilter(_DropFrameDumps())
 # Every DEBUG record of the library is withheld, not only the dumps the filter knows: a
 # release that rewords its frame dump must not start leaking token fragments.
 _log.setLevel(logging.INFO)
+
+_stream_log = get_logger("capitalcom.stream")
 
 # Kept as a module name so tests can see the arguments the context is built with.
 _default_context = ssl.create_default_context
@@ -73,7 +74,9 @@ class WebsocketConnection:
         try:
             self._stack.close()
         except (OSError, WebSocketException) as error:
-            _log.debug("closing the stream socket failed: %s", type(error).__name__)
+            # On the stream logger: the websockets logger withholds DEBUG, and a failure here
+            # must still be visible.
+            _stream_log.warning("closing the stream socket failed: %s", type(error).__name__)
 
 
 class WebsocketTransport:
@@ -111,18 +114,12 @@ class WebsocketTransport:
         return Ok(WebsocketConnection(connection, stack))
 
     def _context(self) -> ssl.SSLContext:
-        # The same trust as the REST transport: the bundle or directory the session names,
-        # else the variables requests reads, else requests' own bundle. The system store
+        # The same trust as the REST transport: the bundle or directory chosen by the
+        # composition root with requests' rules, else requests' own bundle. The system store
         # alone would fail on some installs where REST works.
         if self._cafile is not None and Path(self._cafile).is_dir():
             return _default_context(cafile=None, capath=self._cafile)
-        bundle = (
-            self._cafile
-            or os.environ.get("REQUESTS_CA_BUNDLE")
-            or os.environ.get("CURL_CA_BUNDLE")
-            or DEFAULT_CA_BUNDLE_PATH
-        )
-        return _default_context(cafile=bundle)
+        return _default_context(cafile=self._cafile or DEFAULT_CA_BUNDLE_PATH)
 
 
 def _closed(closed: ConnectionClosed) -> TransportError:

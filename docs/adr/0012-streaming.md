@@ -41,9 +41,11 @@ background feed runs the loop in a thread of their own. The cost is that a loop 
 for longer than the 5-minute keepalive delays the ping. The server keeps the socket open
 (P7), so the next keepalive simply gets fresh tokens.
 
-To stop a loop that runs in another thread, call `close()` on the stream or the client from
-any thread. The blocked read then fails, and the stream ends iteration instead of treating
-the failure as a drop and reconnecting.
+A stream is used from one thread. A call from a second thread while one is in progress is
+refused with `ValidationError`: one socket cannot be read by two threads, and an
+acknowledgement read by the wrong one would be lost. The exception is `close()`, which may
+come from any thread to stop a loop running in another. The blocked read then fails, and the
+stream ends iteration instead of treating the failure as a drop and reconnecting.
 
 ### The host is pinned
 
@@ -89,9 +91,11 @@ demo reports still matches the pinned host, so drift shows up in CI.
   closes.
 - A refused login or a refused key on resubscription is raised at once.
 - After a successful resubscription the stream yields one `Gap(since, until, reason)`:
-  - `since` is the time of the last event delivered, or read before the drop: its server time,
-    bounded by the local clock. A reader lagging behind the feed would otherwise date the gap
-    from when it read that event, and the events lost in between would fall outside the gap;
+  - `since` is the time of the last event delivered, or read before the drop. For a quote
+    that is its server time, bounded by the local clock: a reader lagging behind the feed
+    would otherwise date the gap from when it read the quote, and the quotes lost in between
+    would fall outside the gap. A bar's time is its start, so a bar counts from when it was
+    read. A gap never starts before the previous one ended;
   - events read before the drop come out before the `Gap`, and events from the new
     connection after it;
   - the reason is `SERVER_CLOSED` when the server sent a close frame, `ACCOUNT_SWITCHED`
@@ -119,9 +123,11 @@ this way in review. The stream's own ping, every 5 minutes
 with a 10 s answer timeout, detects a dead link instead. A half-open connection is therefore
 noticed within about 5 minutes and 10 seconds, and is reported as a `Gap`.
 
-TLS trusts what the REST transport trusts: the CA bundle or directory named by an injected
-`requests.Session`, else `REQUESTS_CA_BUNDLE` or `CURL_CA_BUNDLE`, else the bundle `requests`
-ships with. The system store alone would fail on installs where REST works.
+TLS trusts what the REST transport trusts. The composition root asks `requests` itself
+(`Session.merge_environment_settings`), so `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` win
+over `session.verify` unless the session ignores the environment, exactly as for REST. A
+directory is used as `capath`; without any setting the bundle `requests` ships with is used.
+The system store alone would fail on installs where REST works.
 
 ### Logs never carry a token
 
