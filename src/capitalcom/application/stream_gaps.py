@@ -1,9 +1,11 @@
 """How a ``Gap`` is dated and why it happened: pure rules shared by the stream session."""
 
+from collections.abc import Sequence
 from datetime import datetime
 
+from capitalcom.application.stream_frames import Event
 from capitalcom.application.stream_link import AckTimeoutError
-from capitalcom.domain.errors import TransportError
+from capitalcom.domain.errors import ResponseFormatError, TransportError
 from capitalcom.domain.streaming import Candle, GapReason, Quote
 
 
@@ -16,6 +18,19 @@ def read_at(event: Quote | Candle, now: datetime) -> datetime:
     bar counts from when it was read.
     """
     return now if isinstance(event, Candle) else min(now, event.time)
+
+
+def kept_from_drop(
+    drained: Sequence[Event | ResponseFormatError], since: datetime, now: datetime
+) -> tuple[list[Quote | Candle | ResponseFormatError], datetime]:
+    """What a dropped link had buffered, unwrapped, and when the gap after it starts.
+
+    Events read before the drop come out before the Gap that follows them, so the gap starts
+    after the last of them, never before ``since``.
+    """
+    kept = [item if isinstance(item, ResponseFormatError) else item.value for item in drained]
+    read = [read_at(item, now) for item in kept if not isinstance(item, ResponseFormatError)]
+    return kept, max([since, *read])
 
 
 def gap_reason(error: TransportError) -> GapReason:

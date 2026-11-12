@@ -123,7 +123,9 @@ class WebsocketTransport:
 
 
 def _closed(closed: ConnectionClosed) -> TransportError:
-    # A close frame from the server means it ended the stream; without one the network did.
-    if closed.rcvd is not None:
+    # Only a close the server started means it ended the stream. When our side closed first
+    # (rcvd_then_sent is False: the library closing on a protocol error, say), the server's
+    # frame merely answered it; without any frame the network ended it.
+    if closed.rcvd is not None and closed.rcvd_then_sent is not False:
         return TransportError(f"stream closed by the server (code {closed.rcvd.code})")
     return TransportError("stream connection lost", reached_server=False)

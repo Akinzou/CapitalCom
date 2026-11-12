@@ -15,14 +15,13 @@ from capitalcom.application import stream_requests as requests
 from capitalcom.application.ports import Clock, StreamTransport
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.session import SessionManager
-from capitalcom.application.stream_gaps import gap_reason, read_at
+from capitalcom.application.stream_gaps import gap_reason, kept_from_drop, read_at
 from capitalcom.application.stream_link import StreamLink
 from capitalcom.application.stream_reconnect import open_resubscribed
 from capitalcom.domain.enums import Resolution
 from capitalcom.domain.errors import (
     AuthenticationError,
     CapitalComError,
-    ResponseFormatError,
     SubscriptionError,
     TransportError,
     ValidationError,
@@ -233,9 +232,7 @@ class StreamSession:
     def _usable(self) -> Result[StreamLink, CapitalComError]:
         if self._closed or self._link is None:
             return Err(StreamClosedError())
-        # None means the session is between logins, not that it moved to another account.
-        account = self._session.current_account_id
-        if account is not None and account != self._account:
+        if self._switched():
             reconnected = self._reconnect(GapReason.ACCOUNT_SWITCHED)
             if isinstance(reconnected, Err):
                 return reconnected
@@ -246,20 +243,22 @@ class StreamSession:
         """Close the link, keeping what it buffered; return when the last kept event was read."""
         since = self._last_event_at
         if self._link is not None:
-            # Events read before the drop come out before the Gap that follows them, and the
-            # gap starts after the last of them.
-            drained = [
-                item if isinstance(item, ResponseFormatError) else item.value
-                for item in self._link.drain()
-            ]
-            read = [item for item in drained if not isinstance(item, ResponseFormatError)]
-            since = max([since, *(read_at(event, self._clock.now_utc()) for event in read)])
-            self._ready.extend(drained)
+            kept, since = kept_from_drop(self._link.drain(), since, self._clock.now_utc())
+            self._ready.extend(kept)
             self._link.close()
             self._link = None
         return since
 
+    def _switched(self) -> bool:
+        # None means the session is between logins, not that it moved to another account.
+        account = self._session.current_account_id
+        return account is not None and account != self._account
+
     def _reconnect(self, reason: GapReason) -> Result[None, CapitalComError]:
+        if self._switched():
+            # A switch, even one made from another thread while a read blocked, explains the
+            # drop better than how the socket ended: the subscriptions now serve a new account.
+            reason = GapReason.ACCOUNT_SWITCHED
         since = self._drop_link()
         opened = open_resubscribed(
             self._transport,

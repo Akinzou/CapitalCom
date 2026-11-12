@@ -9,7 +9,7 @@ from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.stream_frames import INVALID_SESSION
 from capitalcom.application.stream_session import StreamClosedError, StreamSession
 from capitalcom.domain.errors import AuthenticationError, TransportError, ValidationError
-from capitalcom.domain.streaming import Gap, Quote
+from capitalcom.domain.streaming import Gap, GapReason, Quote
 from tests.fakes import (
     EPOCH,
     FakeClock,
@@ -168,3 +168,22 @@ def test_use_from_a_second_thread_is_refused() -> None:
     assert isinstance(refused, Err)
     assert isinstance(refused.error, ValidationError)
     assert "thread" in str(refused.error)
+
+
+def test_drop_after_an_account_switch_is_account_switched() -> None:
+    class SwitchedMidRead(FakeConnection):
+        def receive(self, timeout_s: float) -> "Result[str | None, TransportError]":
+            # What a switch from another thread looks like to the reader: the session moves
+            # to account B while the read blocks, then the server ends the stream.
+            tokens = session.current_tokens()
+            assert tokens is not None
+            session.invalidate(tokens)
+            session.tokens()
+            return Err(TransportError("closed", reached_server=True))
+
+    stream, _, _, session = open_stream(
+        [SwitchedMidRead(), FakeConnection([], auto_ack)], accounts=["A", "B"]
+    )
+    gap = next_value(stream)
+    assert isinstance(gap, Gap)
+    assert gap.reason is GapReason.ACCOUNT_SWITCHED

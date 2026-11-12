@@ -115,3 +115,6 @@ All notable changes to this project are documented in this file. The format foll
   raised the error, iteration yields the events and ends without raising it again.
   `stream.closed` is `True` at once, so `cc.stream.connect()` may open a new stream.
   `close()` still drops what was not read.
+- **Gap reasons.** A gap is `SERVER_CLOSED` only when the server started the close, and
+  `NETWORK` when our side did. A drop after the session moved to another account, even one
+  switched from another thread, is `ACCOUNT_SWITCHED`.
