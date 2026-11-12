@@ -5,11 +5,15 @@ from collections.abc import Sequence
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.ports import HttpResponse
 from capitalcom.application.rate_limiter import RateLimiter, RequestKind, TokenBucket
+from capitalcom.application.result import Ok
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import Credentials, SessionManager
+from capitalcom.application.stream_session import StreamSession
+from capitalcom.domain.errors import TransportError
 from capitalcom.domain.secret import Secret
-from tests.fakes import FakeClock, FakeTransport, response
+from tests.fakes import FakeClock, FakeConnection, FakeStreamTransport, FakeTransport, response
 
+URL = "wss://stream.test/connect"
 CREDS = Credentials(Secret("key-123"), "me@example.com", Secret("pw-456"))
 
 
@@ -33,3 +37,20 @@ def make_session(
     session = SessionManager(dispatcher, clock, CREDS)
     session.tokens()
     return session, http
+
+
+def open_stream(
+    connections: Sequence[FakeConnection | TransportError], accounts: Sequence[str] = ()
+) -> tuple[StreamSession, FakeStreamTransport, FakeClock, SessionManager]:
+    clock = FakeClock()
+    session, _ = make_session(clock, accounts=accounts)
+    transport = FakeStreamTransport(clock, connections)
+    stream = StreamSession(transport, session, clock, URL, rand=lambda: 0.0)
+    assert stream.open() == Ok(None)
+    return stream, transport, clock, session
+
+
+def next_value(stream: StreamSession) -> object:
+    result = stream.next_event()
+    assert isinstance(result, Ok), result
+    return result.value

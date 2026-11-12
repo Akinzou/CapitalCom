@@ -9,6 +9,7 @@ import pytest
 from capitalcom.api.composition import Core, build_core, stream_transport
 from capitalcom.api.stream import Stream, StreamResource
 from capitalcom.application.ports import StreamTransport
+from capitalcom.application.result import Err, Result
 from capitalcom.application.session import Credentials
 from capitalcom.domain.enums import STREAM_URL, Environment, Resolution
 from capitalcom.domain.errors import (
@@ -158,3 +159,17 @@ def test_stream_transport_keeps_a_ca_bundle_from_the_session() -> None:
     assert isinstance(transport, WebsocketTransport)
     assert transport._cafile == "/path/to/bundle.pem"
     assert stream_transport(None)._cafile is None  # type: ignore[attr-defined]
+
+
+def test_a_close_from_another_thread_ends_iteration() -> None:
+    holder: list[Stream] = []
+
+    class ClosedMidRead(FakeConnection):
+        def receive(self, timeout_s: float) -> Result[str | None, TransportError]:
+            holder[0].close()  # what a close() from another thread looks like to the reader
+            return Err(TransportError("closed by this client", reached_server=True))
+
+    streams, transport, _ = resource([ClosedMidRead(), FakeConnection([], auto_ack)])
+    holder.append(streams.connect())
+    assert list(holder[0]) == []
+    assert len(transport.urls) == 1

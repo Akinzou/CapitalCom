@@ -4,11 +4,9 @@ Every connection script ends in a terminal item or is read no further than scrip
 exhausted script is endless silence.
 """
 
-from collections.abc import Sequence
 from datetime import timedelta
 
 from capitalcom.application.result import Err, Ok
-from capitalcom.application.session import SessionManager
 from capitalcom.application.stream_session import StreamSession
 from capitalcom.domain.enums import Resolution
 from capitalcom.domain.errors import (
@@ -28,29 +26,11 @@ from tests.fakes import (
     auto_ack,
     quote_frame,
 )
-from tests.unit.application.stream_support import make_session
+from tests.unit.application.stream_support import URL, make_session, next_value, open_stream
 
-URL = "wss://stream.test/connect"
 INVALID = "error.invalid.session.token"
 RESET = TransportError("reset", reached_server=False)
 M1, M5 = Resolution.MINUTE, Resolution.MINUTE_5
-
-
-def open_stream(
-    connections: Sequence[FakeConnection | TransportError], accounts: Sequence[str] = ()
-) -> tuple[StreamSession, FakeStreamTransport, FakeClock, SessionManager]:
-    clock = FakeClock()
-    session, _ = make_session(clock, accounts=accounts)
-    transport = FakeStreamTransport(clock, connections)
-    stream = StreamSession(transport, session, clock, URL, rand=lambda: 0.0)
-    assert stream.open() == Ok(None)
-    return stream, transport, clock, session
-
-
-def next_value(stream: StreamSession) -> object:
-    result = stream.next_event()
-    assert isinstance(result, Ok), result
-    return result.value
 
 
 def test_subscribe_sends_only_new_keys_and_refused_keys_leave_the_set() -> None:

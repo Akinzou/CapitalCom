@@ -7,7 +7,7 @@ from typing import TypeVar
 from capitalcom.api.composition import Core
 from capitalcom.application.ports import StreamTransport
 from capitalcom.application.result import Err, Result
-from capitalcom.application.stream_session import StreamEvent, StreamSession
+from capitalcom.application.stream_session import StreamClosedError, StreamEvent, StreamSession
 from capitalcom.domain.enums import Resolution
 from capitalcom.domain.errors import CapitalComError, ValidationError
 from capitalcom.domain.streaming import CandleType
@@ -80,7 +80,10 @@ class Stream:
         # the stream, or that already saw StreamError, simply finishes.
         if self._session.closed:
             raise StopIteration
-        return _settle(self._session.next_event())
+        result = self._session.next_event()
+        if isinstance(result, Err) and isinstance(result.error, StreamClosedError):
+            raise StopIteration  # closed meanwhile, for example by close() in another thread
+        return _settle(result)
 
 
 class StreamResource:
