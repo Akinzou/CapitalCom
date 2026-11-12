@@ -161,6 +161,15 @@ def test_public_exports() -> None:
         "Position",
         "WorkingOrder",
         "SizeAdjustedError",
+        "Stream",
+        "Quote",
+        "Candle",
+        "Gap",
+        "GapReason",
+        "CandleType",
+        "PriceSide",
+        "StreamError",
+        "SubscriptionError",
     }
     assert expected <= set(dir(capitalcom))
 
@@ -186,3 +195,29 @@ def test_core_exposes_its_clock() -> None:
     credentials = Credentials(Secret("clk-key-0001"), "me@example.com", Secret("clk-pw-0001"))
     core = build_core(credentials, Environment.DEMO, clock=clock, transport=FakeTransport([]))
     assert core.clock is clock
+
+
+def test_close_closes_stream_before_logout_even_if_socket_close_fails(
+    api: responses.RequestsMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.fakes import FakeClock, FakeConnection, FakeStreamTransport
+
+    order: list[str] = []
+
+    class BrokenSocket(FakeConnection):
+        def close(self) -> None:
+            order.append("socket")
+            raise OSError("socket already gone")
+
+    def logout(_: object) -> tuple[int, dict[str, str], str]:
+        order.append("logout")
+        return 200, {}, '{"status": "SUCCESS"}'
+
+    api.add_callback(responses.DELETE, f"{DEMO}/api/v1/session", callback=logout)
+    transport = FakeStreamTransport(FakeClock(), [BrokenSocket()])
+    monkeypatch.setattr("capitalcom.api.client.stream_transport", lambda _: transport)
+    cc = new_client()
+    cc.stream.connect()
+    with pytest.raises(OSError, match="already gone"):
+        cc.close()
+    assert order == ["socket", "logout"]

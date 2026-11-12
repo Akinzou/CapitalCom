@@ -9,12 +9,12 @@ from capitalcom.application.api_client import ApiClient
 from capitalcom.application.confirmer import DealConfirmer
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.login import PasswordEncryptor
-from capitalcom.application.ports import Clock, HttpTransport
+from capitalcom.application.ports import Clock, HttpTransport, StreamTransport
 from capitalcom.application.rate_limiter import RateLimiter
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import Credentials, SessionManager
 from capitalcom.domain.enums import Environment
-from capitalcom.infrastructure.requests_transport import RequestsTransport
+from capitalcom.infrastructure.requests_transport import RequestsTransport, tls_verify
 from capitalcom.infrastructure.system_clock import SystemClock
 
 
@@ -69,6 +69,19 @@ def _load_encryptor() -> PasswordEncryptor:
             "pip install 'capitalcom[encryption]'"
         ) from error
     return encrypt_password
+
+
+def stream_transport(http_session: requests.Session | None) -> StreamTransport:
+    """The WebSocket transport, trusting the CA bundle an injected session names."""
+    # Imported here, so REST-only users never need websockets; called by connect(), so a
+    # missing extra fails where streaming is asked for, not in the constructor.
+    try:
+        from capitalcom.infrastructure.websocket_transport import WebsocketTransport
+    except ImportError as error:
+        raise ImportError(
+            "streaming needs the 'streaming' extra: pip install 'capitalcom[streaming]'"
+        ) from error
+    return WebsocketTransport(tls_verify(http_session) if http_session is not None else True)
 
 
 def _nothing() -> None:

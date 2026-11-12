@@ -66,6 +66,11 @@ class StreamSession:
         self._closed = False
 
     @property
+    def closed(self) -> bool:
+        """True after ``close()``, or once the stream gave up or was refused for good."""
+        return self._closed
+
+    @property
     def subscriptions(self) -> Subscriptions:
         """What the stream is subscribed to; it matches what the server accepted."""
         return self._subs

@@ -7,6 +7,7 @@
 # deliberately no __all__ here: 1.x code doing "from capitalcom import *" received every public
 # legacy name, and still does, next to the 2.x names.
 from .api.client import CapitalCom
+from .api.stream import Stream
 from .application.retry import RetryPolicy
 from .client import *
 from .domain.account import Account, AccountPreferences, Balance, Leverage, SessionInfo
@@ -22,6 +23,8 @@ from .domain.errors import (
     OutcomeUnknownError,
     RateLimitError,
     ResponseFormatError,
+    StreamError,
+    SubscriptionError,
     TransportError,
     ValidationError,
 )
@@ -40,5 +43,6 @@ from .domain.positions import Position
 from .domain.prices import BidAsk, PriceBar
 from .domain.protection import StopLoss, TakeProfit
 from .domain.sentiment import Sentiment
+from .domain.streaming import Candle, CandleType, Gap, GapReason, PriceSide, Quote
 from .domain.watchlist import Watchlist, WatchlistCreation
 from .domain.working_orders import WorkingOrder
