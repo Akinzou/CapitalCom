@@ -7,7 +7,9 @@ from capitalcom.application.retry import parse_retry_after
 from capitalcom.domain.errors import (
     ApiError,
     AuthenticationError,
+    CapitalComError,
     NotFoundError,
+    OutcomeUnknownError,
     RateLimitError,
     ResponseFormatError,
 )
@@ -40,3 +42,15 @@ def _error_code(response: HttpResponse) -> str | None:
         if isinstance(code, str):
             return code
     return None
+
+
+def outcome_unknown(method: str, path: str, cause: CapitalComError) -> OutcomeUnknownError:
+    """The one way a request whose effect is uncertain becomes ``OutcomeUnknownError``.
+
+    The cause is always chained: it says why the outcome is unknown (a timeout after sending,
+    a 5xx, an unreadable 2xx), which the caller needs when checking what happened. A ``Result``
+    error is never raised where it is made, so ``raise ... from`` cannot do this at every site.
+    """
+    error = OutcomeUnknownError(method, path)
+    error.__cause__ = cause
+    return error

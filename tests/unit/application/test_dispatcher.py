@@ -5,7 +5,7 @@ from decimal import Decimal
 import pytest
 
 from capitalcom.application.dispatcher import Dispatcher
-from capitalcom.application.error_mapping import error_for
+from capitalcom.application.error_mapping import error_for, outcome_unknown
 from capitalcom.application.ports import HttpRequest, HttpResponse
 from capitalcom.application.rate_limiter import RateLimiter, RequestKind, SlidingWindow
 from capitalcom.application.result import Err, Ok
@@ -58,10 +58,12 @@ def test_429_exhausted_is_rate_limit_error() -> None:
 
 
 def test_post_timeout_after_sending_is_outcome_unknown_and_not_retried() -> None:
-    dispatcher, transport, _ = make([TransportError("read timeout", reached_server=True)])
+    timeout = TransportError("read timeout", reached_server=True)
+    dispatcher, transport, _ = make([timeout])
     result = dispatcher.send(POST)
     assert isinstance(result, Err)
     assert isinstance(result.error, OutcomeUnknownError)
+    assert result.error.__cause__ is timeout
     assert len(transport.requests) == 1
 
 
@@ -79,6 +81,8 @@ def test_post_5xx_is_outcome_unknown_and_not_retried(status: int) -> None:
     result = dispatcher.send(POST)
     assert isinstance(result, Err)
     assert isinstance(result.error, OutcomeUnknownError)
+    assert isinstance(result.error.__cause__, ApiError)
+    assert result.error.__cause__.status == status
     assert len(transport.requests) == 1
 
 
@@ -204,3 +208,11 @@ def test_retry_log_masks_the_id_inside_the_error_text(caplog: pytest.LogCaptureF
         dispatcher.send(HttpRequest("GET", path))
     assert "GET /api/v1/confirms/{id}: ConnectionError" in caplog.text
     assert "SECRET" not in caplog.text
+
+
+def test_outcome_unknown_chains_its_cause_as_raise_from_would() -> None:
+    cause = TransportError("read timeout", reached_server=True)
+    error = outcome_unknown("POST", "/api/v1/positions", cause)
+    assert (error.method, error.path) == ("POST", "/api/v1/positions")
+    assert error.__cause__ is cause
+    assert error.__suppress_context__
