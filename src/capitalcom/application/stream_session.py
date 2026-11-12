@@ -15,7 +15,8 @@ from capitalcom.application import stream_requests as requests
 from capitalcom.application.ports import Clock, StreamTransport
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.session import SessionManager
-from capitalcom.application.stream_link import AckTimeoutError, StreamLink
+from capitalcom.application.stream_gaps import gap_reason, read_at
+from capitalcom.application.stream_link import StreamLink
 from capitalcom.application.stream_reconnect import open_resubscribed
 from capitalcom.domain.enums import Resolution
 from capitalcom.domain.errors import (
@@ -58,8 +59,9 @@ class StreamSession:
         self._rand = rand
         self._subs = Subscriptions()
         self._link: StreamLink | None = None
-        # Undecodable frames stay at their position among the events (see StreamLink).
-        self._ready: deque[StreamEvent | ResponseFormatError] = deque()
+        # Errors wait in line too: an undecodable frame at its position among the events
+        # (see StreamLink), and the error a stream gave up with behind what it had read.
+        self._ready: deque[StreamEvent | CapitalComError] = deque()
         self._last_event_at = clock.now_utc()
         self._account: str | None = None
         self._closed = False
@@ -67,8 +69,13 @@ class StreamSession:
 
     @property
     def closed(self) -> bool:
-        """True after ``close()``, or once the stream gave up or was refused for good."""
+        """True once the socket is closed for good: by ``close()``, or because it gave up."""
         return self._closed
+
+    @property
+    def exhausted(self) -> bool:
+        """True once closed with nothing left to deliver; iteration ends here."""
+        return self._closed and not self._ready
 
     @property
     def subscriptions(self) -> Subscriptions:
@@ -126,14 +133,16 @@ class StreamSession:
 
     def _next_event(self) -> Result[StreamEvent, CapitalComError]:
         while True:
-            if self._closed:
-                return Err(StreamClosedError())
             if self._ready:
                 item = self._ready.popleft()
-                return Err(item) if isinstance(item, ResponseFormatError) else Ok(item)
+                return Err(item) if isinstance(item, CapitalComError) else Ok(item)
+            if self._closed or self._link is None:
+                # Also a stream whose open() failed: nothing will ever arrive on it.
+                return Err(StreamClosedError())
             link = self._usable()
             if isinstance(link, Err):
-                return link
+                self._queue(link.error)
+                continue  # what a failed account-switch reconnect read comes out first
             if self._ready:
                 continue  # an account-switch reconnect has just queued its Gap
             incoming = link.value.next_incoming()
@@ -143,22 +152,37 @@ class StreamSession:
                     # Closed from another thread: the failed read is the close, not a drop.
                     return Err(StreamClosedError())
                 if not isinstance(error, TransportError):
-                    return self._fail(error)
-                reconnected = self._reconnect(_reason(error))
+                    self._queue(self._fail(error).error)
+                    continue
+                reconnected = self._reconnect(gap_reason(error))
                 if isinstance(reconnected, Err):
-                    return reconnected
+                    self._queue(reconnected.error)
             elif incoming.value is not None:
                 event = incoming.value.value
-                self._last_event_at = max(self._last_event_at, self._received_at(event))
+                self._last_event_at = max(
+                    self._last_event_at, read_at(event, self._clock.now_utc())
+                )
                 return Ok(event)
 
     def close(self) -> None:
-        """Close the socket; the server drops its subscriptions with it."""
+        """Close the socket and drop what was not read: the caller asked to stop."""
         self._closed = True
         self._ready.clear()
         if self._link is not None:
             self._link.close()
             self._link = None
+
+    def _give_up(self) -> None:
+        # Unlike close(), keeps what was read: the caller did not ask to drop it, and a
+        # trader reading prices must see every one that arrived before the stream ended.
+        self._closed = True
+        self._drop_link()
+
+    def _queue(self, error: CapitalComError) -> None:
+        # Inside next_event an error waits behind what was read before it. A close from
+        # another thread emptied the queue and needs no place in it.
+        if not isinstance(error, StreamClosedError):
+            self._ready.append(error)
 
     def _exclusive(
         self, call: Callable[[], Result[T, CapitalComError]]
@@ -200,7 +224,7 @@ class StreamSession:
             return Err(failure)
         if isinstance(failure, TransportError):
             # The keys stay in the set, so the reconnect resubscribes them with the rest.
-            return self._reconnect(_reason(failure))
+            return self._reconnect(gap_reason(failure))
         if added:
             # Never acknowledged: kept, they would make a retry a silent no-op.
             self._subs.discard(keys)
@@ -218,7 +242,8 @@ class StreamSession:
         assert self._link is not None  # noqa: S101 - a successful reconnect sets the link
         return Ok(self._link)
 
-    def _reconnect(self, reason: GapReason) -> Result[None, CapitalComError]:
+    def _drop_link(self) -> datetime:
+        """Close the link, keeping what it buffered; return when the last kept event was read."""
         since = self._last_event_at
         if self._link is not None:
             # Events read before the drop come out before the Gap that follows them, and the
@@ -228,10 +253,14 @@ class StreamSession:
                 for item in self._link.drain()
             ]
             read = [item for item in drained if not isinstance(item, ResponseFormatError)]
-            since = max([since, *(self._received_at(event) for event in read)])
+            since = max([since, *(read_at(event, self._clock.now_utc()) for event in read)])
             self._ready.extend(drained)
             self._link.close()
             self._link = None
+        return since
+
+    def _reconnect(self, reason: GapReason) -> Result[None, CapitalComError]:
+        since = self._drop_link()
         opened = open_resubscribed(
             self._transport,
             self._url,
@@ -242,7 +271,7 @@ class StreamSession:
             lambda: self._closed,
         )
         if isinstance(opened, Err):
-            self.close()
+            self._give_up()
             return Err(opened.error)
         link = opened.value
         if link is None:
@@ -261,21 +290,7 @@ class StreamSession:
         self._last_event_at = until
         return Ok(None)
 
-    def _received_at(self, event: Quote | Candle) -> datetime:
-        # A quote's server time, bounded by now: a reader that lags behind the feed would
-        # otherwise date the gap from when it read the last quote, and the quotes lost in
-        # between would fall outside it. A bar's time is its start, which for an hourly bar
-        # is up to an hour old, so a bar counts from when it was read.
-        now = self._clock.now_utc()
-        return now if isinstance(event, Candle) else min(now, event.time)
-
     def _fail(self, error: CapitalComError) -> Err[CapitalComError]:
         if isinstance(error, AuthenticationError):
-            self.close()
+            self._give_up()
         return Err(error)
-
-
-def _reason(error: TransportError) -> GapReason:
-    if isinstance(error, AckTimeoutError) or not error.reached_server:
-        return GapReason.NETWORK
-    return GapReason.SERVER_CLOSED

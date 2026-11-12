@@ -109,3 +109,9 @@ All notable changes to this project are documented in this file. The format foll
   closes the stream during a reconnect. It is raised as `ResponseFormatError` at its position
   among the events, and iteration may go on. If the unreadable frame was the awaited
   acknowledgement itself, the wait times out into a reconnect and a `NETWORK` gap.
+- **Events before a give-up.** When the stream gives up (five failed reconnects, or a login or
+  key refused while resubscribing), the events it had already read are no longer lost.
+  Inside `next()` they come first, then the error, then iteration ends. If a subscribe call
+  raised the error, iteration yields the events and ends without raising it again.
+  `stream.closed` is `True` at once, so `cc.stream.connect()` may open a new stream.
+  `close()` still drops what was not read.
