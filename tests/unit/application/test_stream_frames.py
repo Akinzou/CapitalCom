@@ -133,7 +133,7 @@ def test_check_ack_accepts_already_subscribed() -> None:
 
 def test_check_ack_accepts_not_subscribed_on_unsubscribe() -> None:
     ack = ack_of(SUBSCRIBE_ACK.replace("PROCESSED", "NOT_SUBSCRIBED"))
-    assert check_ack(ack, ["BTCUSD"]) == Ok(None)
+    assert check_ack(ack, ["BTCUSD"], unsubscribe=True) == Ok(None)
 
 
 def test_check_ack_reports_error_text_per_key() -> None:
@@ -180,3 +180,11 @@ def test_is_invalid_session() -> None:
     assert is_invalid_session(ack_of(REFUSED_SESSION_ACK))
     assert not is_invalid_session(ack_of(NULL_EPIC_ACK))
     assert not is_invalid_session(ack_of(SUBSCRIBE_ACK))
+
+
+def test_check_ack_statuses_depend_on_the_direction() -> None:
+    not_subscribed = ack_of(SUBSCRIBE_ACK.replace("PROCESSED", "NOT_SUBSCRIBED"))
+    already = ack_of(SUBSCRIBE_ACK.replace("PROCESSED", "ALREADY_SUBSCRIBED"))
+    assert isinstance(check_ack(not_subscribed, ["BTCUSD"]), Err)
+    assert check_ack(not_subscribed, ["BTCUSD"], unsubscribe=True) == Ok(None)
+    assert isinstance(check_ack(already, ["BTCUSD"], unsubscribe=True), Err)

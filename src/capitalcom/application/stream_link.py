@@ -15,7 +15,9 @@ from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.session import SessionManager, SessionTokens
 from capitalcom.application.stream_frames import (
     INVALID_SESSION,
+    OHLC_UNSUBSCRIBE,
     PING,
+    QUOTES_UNSUBSCRIBE,
     Ack,
     Event,
     check_ack,
@@ -36,6 +38,9 @@ ACK_TIMEOUT_S = 10.0
 # How long an overdue keepalive answer may still take once the queue is empty: a socket that
 # stopped reading while its queue was full refills only after the queue was read from.
 DRAIN_GRACE_S = 1.0
+# A feed that never pauses would otherwise keep the drain going for as long as the ack is
+# missing; a queue holds far fewer frames than this.
+DRAIN_MAX_FRAMES = 1000
 
 _log = get_logger("capitalcom.stream")
 
@@ -81,7 +86,8 @@ class StreamLink:
             if isinstance(ack, Err):
                 return ack
             if not is_invalid_session(ack.value):
-                checked = check_ack(ack.value, expected_keys)
+                unsubscribe = destination in (QUOTES_UNSUBSCRIBE, OHLC_UNSUBSCRIBE)
+                checked = check_ack(ack.value, expected_keys, unsubscribe=unsubscribe)
                 return Err(checked.error) if isinstance(checked, Err) else ack
             # The server refused the tokens the frame carried (P7: after a logout or expiry);
             # one resend with fresh ones tells a stale copy from a refused login.
@@ -124,7 +130,11 @@ class StreamLink:
     def _keepalive(self) -> Result[float, CapitalComError]:
         # An overdue ack may be sitting behind frames a slow caller has not read yet, so the
         # queue is drained before the link is declared dead.
+        drained = 0
         while (ping := self._ping) is not None and self._overdue(ping):
+            if drained == DRAIN_MAX_FRAMES:
+                return Err(AckTimeoutError("no keepalive acknowledgement"))
+            drained += 1
             received = self._connection.receive(DRAIN_GRACE_S)
             if isinstance(received, Err):
                 return Err(received.error)

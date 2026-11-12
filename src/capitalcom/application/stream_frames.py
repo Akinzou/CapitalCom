@@ -30,8 +30,10 @@ PING = "ping"
 INVALID_SESSION = "error.invalid.session.token"
 MISSING = "MISSING"
 # The probe saw PROCESSED and ALREADY_SUBSCRIBED on subscribe and NOT_SUBSCRIBED on
-# unsubscribe; each means the key is now in the state the caller asked for.
-_ACCEPTED = frozenset({"PROCESSED", "ALREADY_SUBSCRIBED", "NOT_SUBSCRIBED"})
+# unsubscribe; each means the key is now in the state the caller asked for. Kept apart, so a
+# subscribe answered NOT_SUBSCRIBED is a refusal, not a success with no quotes behind it.
+_SUBSCRIBED = frozenset({"PROCESSED", "ALREADY_SUBSCRIBED"})
+_UNSUBSCRIBED = frozenset({"PROCESSED", "NOT_SUBSCRIBED"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,8 +105,11 @@ def decode_frame(text: str) -> Incoming:
     return Unknown(destination)
 
 
-def check_ack(ack: Ack, expected: Sequence[str]) -> Result[None, SubscriptionError]:
+def check_ack(
+    ack: Ack, expected: Sequence[str], *, unsubscribe: bool = False
+) -> Result[None, SubscriptionError]:
     """Accept the answer only if every requested key reached the requested state."""
+    accepted = _UNSUBSCRIBED if unsubscribe else _SUBSCRIBED
     if ack.status == "ERROR":
         reason = f"ERROR: {ack.error_code or 'no error code'}"
         return Err(SubscriptionError(dict.fromkeys(expected, reason), ack.error_code))
@@ -121,7 +126,7 @@ def check_ack(ack: Ack, expected: Sequence[str]) -> Result[None, SubscriptionErr
         text = keys.get(key)
         if text is None:
             refused[key] = MISSING
-        elif text not in _ACCEPTED:
+        elif text not in accepted:
             refused[key] = str(text)
     return Err(SubscriptionError(refused, ack.error_code)) if refused else Ok(None)
 

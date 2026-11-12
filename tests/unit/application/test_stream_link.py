@@ -6,6 +6,7 @@ from capitalcom.application.result import Err, Ok
 from capitalcom.application.stream_frames import Ack, Event
 from capitalcom.application.stream_link import (
     ACK_TIMEOUT_S,
+    DRAIN_MAX_FRAMES,
     KEEPALIVE_S,
     AckTimeoutError,
     StreamLink,
@@ -230,3 +231,14 @@ def test_overdue_keepalive_ack_arriving_just_after_the_queue_empties_is_found() 
     assert isinstance(result.value, Event)
     assert result.value.value.epic == "B"
     assert isinstance(link.next_incoming(), Ok)
+
+
+def test_a_busy_feed_cannot_hide_a_missing_keepalive_ack_forever() -> None:
+    link, _, clock = open_link([quote_frame(f"E{n}") for n in range(DRAIN_MAX_FRAMES + 50)])
+    clock.advance(KEEPALIVE_S)
+    assert isinstance(link.next_incoming(), Ok)
+    clock.advance(15)
+    result = link.next_incoming()
+    assert isinstance(result, Err)
+    assert isinstance(result.error, AckTimeoutError)
+    assert len(link.drain()) <= DRAIN_MAX_FRAMES
