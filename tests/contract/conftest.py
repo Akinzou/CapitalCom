@@ -104,10 +104,11 @@ def btc(demo_core: Core) -> Iterator[Market]:
     yield Market(min_size=to_decimal(rules["minDealSize"]["value"], "minDealSize"))
     leftovers = set(btc_position_ids(demo_core)) - before
     for deal_id in sorted(leftovers):
-        log.warning("closing position left by the test: %s", deal_id)
+        # No id in the message: the contract log is public.
+        log.warning("closing a position left by the test")
         close_position(demo_core, deal_id)
     remaining = set(btc_position_ids(demo_core)) - before
-    assert not remaining, f"positions opened by the run are still open: {sorted(remaining)}"
+    assert not remaining, f"{len(remaining)} position(s) opened by the run are still open"
 
 
 def btc_order_ids(core: Core) -> set[str]:

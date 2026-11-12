@@ -21,6 +21,19 @@ Optional extras:
 
 Python 3.11 or newer.
 
+## Quick start
+
+With the API key, your login and the key's password exported as `CAPITAL_API_KEY`,
+`CAPITAL_IDENTIFIER` and `CAPITAL_PASSWORD`, this opens the smallest BTCUSD position on the
+demo account and closes it again:
+
+```python
+--8<-- "docs/examples/quickstart.py"
+```
+
+It prints the deal status and the booked size, then the close status. The test suite runs
+this exact file, and the contract job runs it against the demo server.
+
 ## Where next
 
 - [Migration from 1.x](guides/migration.md), if you use `CapitalClient` today.

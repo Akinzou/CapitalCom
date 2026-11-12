@@ -56,7 +56,8 @@ def test_probe_switch_to_the_active_account(demo_core: Core) -> None:
     assert current is not None
     sent = demo_core.dispatcher.send(switch_request(tokens.headers(), current))
     if not isinstance(sent, Err):
-        log.info("switch to the active account answered 200: %s", sent.value.body[:200])
+        # Status only: the body names accounts, and the contract log is public.
+        log.info("switch to the active account answered %s", sent.value.status)
         pytest.fail("switching to the active account succeeded; SWITCH_ALREADY_ACTIVE is moot")
     error = sent.error
     assert isinstance(error, ApiError)

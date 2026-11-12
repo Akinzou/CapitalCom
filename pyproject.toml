@@ -73,15 +73,22 @@ select = [
     "C4", "RET", "PTH", "ANN",
 ]
 
+[tool.ruff.lint.isort]
+# The package root re-exports with "X as X" groups; split one per line they would triple it.
+combine-as-imports = true
+
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "ANN"]
 # The package root re-exports the legacy module's __all__ with a star import (F403), and the
 # 2.x names without an __all__ of its own, so nothing a 1.x star import got is hidden (F401).
 "src/capitalcom/__init__.py" = ["F401", "F403"]
+# Examples are scripts whose output is the point (T201), and their nested "with" blocks are
+# the shape a reader copies: client first, then the stream it opens (SIM117).
+"docs/examples/**" = ["T201", "SIM117"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "docs/examples"]
 mypy_path = "src"
 
 [tool.coverage.run]

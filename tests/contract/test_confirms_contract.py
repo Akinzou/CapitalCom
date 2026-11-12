@@ -41,7 +41,8 @@ def test_open_and_close_are_confirmed(demo_core: Core, btc: Market) -> None:
     assert opened.deal_id not in open_ids
 
     closed = close_position(demo_core, position_id)
-    log.info("close confirmation: status=%s affectedDeals=%s", closed.status, closed.affected_deals)
+    statuses = [deal.status for deal in closed.affected_deals]  # ids stay out of the public log
+    log.info("close confirmation: status=%s affected deal statuses=%s", closed.status, statuses)
     assert closed.outcome is Outcome.ACCEPTED
 
 
