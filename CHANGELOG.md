@@ -12,6 +12,13 @@ All notable changes to this project are documented in this file. The format foll
   renews the session before Capital.com's 10-minute idle timeout, and logs out on `close()` or
   at the end of a `with` block. Namespaces: `session`, `accounts`, `history`, `positions`,
   `orders`, `markets`, `prices`, `sentiment` and `watchlists`.
+- **Live prices over the WebSocket** (`cc.stream`, needs `pip install 'capitalcom[streaming]'`).
+  `with cc.stream.connect() as stream:` opens the stream; `subscribe_quotes` and
+  `subscribe_ohlc` add up to 40 epics each, and iterating yields `Quote`, `Candle` and `Gap`
+  events in the calling thread. The stream keeps the session alive, reconnects with backoff,
+  resubscribes, and reports every interruption as a `Gap`. It raises `SubscriptionError` for
+  a refused key and `StreamError` when it gives up. TLS is always verified and the host is
+  fixed by the library.
 - **Migration guide** in `docs/migration.md`, mapping every 1.x call to its 2.x equivalent.
 - **Typed errors.** Every error derives from `CapitalComError` (and from `Exception`).
   Server refusals are `ApiError` subclasses that carry `status` and `error_code`. A trade
