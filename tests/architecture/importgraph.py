@@ -22,6 +22,7 @@ CORE_ALLOWED_IMPORTS = frozenset(
         "__future__",
         "abc",
         "base64",
+        "bisect",
         "collections",
         "contextlib",
         "dataclasses",

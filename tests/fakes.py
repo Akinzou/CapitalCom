@@ -41,6 +41,17 @@ class FakeClock:
             self._now += seconds
 
 
+class FrozenClock(FakeClock):
+    """Records sleeps without moving time, as if each caller slept on its own thread.
+
+    Bookings then lie in the future, which is where the rate limiter's order matters.
+    """
+
+    def sleep(self, seconds: float) -> None:
+        with self._lock:
+            self.sleeps.append(seconds)
+
+
 def response(
     status: int = 200, body: bytes = b"", headers: dict[str, str] | None = None
 ) -> HttpResponse:

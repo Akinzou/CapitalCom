@@ -9,6 +9,7 @@ from capitalcom.application.rate_limiter import (
     RequestKind,
     SlidingWindow,
     classify,
+    earliest,
 )
 from capitalcom.application.retry import (
     RetryPolicy,
@@ -16,7 +17,7 @@ from capitalcom.application.retry import (
     is_retry_safe,
     parse_retry_after,
 )
-from tests.fakes import EPOCH, FakeClock
+from tests.fakes import EPOCH, FakeClock, FrozenClock
 
 
 def test_retry_after_delta_seconds() -> None:
@@ -70,18 +71,25 @@ def test_classify() -> None:
 
 def test_sliding_window_frees_a_slot_when_the_oldest_send_leaves() -> None:
     window = SlidingWindow(2, 1.0)
-    assert window.earliest(0.0) == 0.0
+    assert earliest([window], 0.0) == 0.0
     window.record(0.0)
     window.record(0.5)
-    assert window.earliest(0.6) == 1.0
+    assert earliest([window], 0.6) == 1.0
     window.record(1.0)
-    assert window.earliest(1.2) == 1.5
+    assert earliest([window], 1.2) == 1.5
 
 
-def test_sliding_window_never_books_before_an_earlier_booking() -> None:
+def test_a_free_slot_before_a_later_booking_is_taken() -> None:
+    # 2.0.0 queued behind the booking at 3.0, so a read waited for a login held back by SESSION.
     window = SlidingWindow(5, 1.0)
     window.record(3.0)
-    assert window.earliest(1.0) == 3.0
+    assert earliest([window], 1.0) == 1.0
+
+
+def test_a_slot_that_would_crowd_a_later_booking_is_not_taken() -> None:
+    window = SlidingWindow(1, 1.0)
+    window.record(3.0)
+    assert earliest([window], 2.5) == 4.0
 
 
 def test_eleventh_general_request_waits_a_full_second() -> None:
@@ -153,13 +161,6 @@ def test_second_session_waits_a_second() -> None:
     limiter.acquire("POST", "/api/v1/session")
     limiter.acquire("POST", "/api/v1/session")
     assert clock.sleeps == [pytest.approx(1.0)]
-
-
-class FrozenClock(FakeClock):
-    """Records sleeps without moving time, so every thread reserves at t=0."""
-
-    def sleep(self, seconds: float) -> None:
-        self.sleeps.append(seconds)
 
 
 def test_concurrent_acquires_never_share_a_slot() -> None:
