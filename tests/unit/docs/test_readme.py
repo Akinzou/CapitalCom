@@ -1,0 +1,53 @@
+"""The README's contents list and coverage badge point at things that exist."""
+
+import re
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
+
+ROOT = Path(__file__).parents[3]
+README = (ROOT / "README.md").read_text(encoding="utf-8")
+PAGES_WORKFLOW = (ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+SITE_URL = re.search(r"^site_url: (\S+)$", (ROOT / "mkdocs.yml").read_text(), re.MULTILINE)
+BADGE_FILE = "badges/coverage.json"
+
+
+def github_anchor(heading: str) -> str:
+    # GitHub's slug: lower case, punctuation dropped, each space a hyphen.
+    return re.sub(r"[^\w\- ]", "", heading.strip().lower()).replace(" ", "-")
+
+
+def outside_code(text: str) -> str:
+    # A "# comment" inside a code block is not a heading.
+    return re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+
+
+def headings(level: str) -> list[str]:
+    return re.findall(rf"^{level} (.+)$", outside_code(README), re.MULTILINE)
+
+
+def contents_links() -> list[str]:
+    section = re.search(r"^## Contents\n(.*?)^## ", README, re.DOTALL | re.MULTILINE)
+    assert section is not None, "README has no Contents section"
+    return re.findall(r"\]\(#([^)]+)\)", section.group(1))
+
+
+def test_every_contents_link_reaches_a_heading() -> None:
+    anchors = {github_anchor(h) for h in headings("##") + headings("###")}
+    assert set(contents_links()) <= anchors
+
+
+def test_every_section_is_in_the_contents() -> None:
+    sections = {github_anchor(h) for h in headings("##")} - {"contents"}
+    assert sections <= set(contents_links())
+
+
+def test_coverage_badge_reads_the_file_the_site_publishes() -> None:
+    # The number comes from the test run in the site build; a badge pointing anywhere else
+    # would show "resource not found" on the project page instead of the coverage.
+    assert SITE_URL is not None
+    badge = re.search(r"https://img\.shields\.io/badge/dynamic/json\?[^)\s]+", README)
+    assert badge is not None, "README has no dynamic coverage badge"
+    query = parse_qs(urlparse(badge.group(0)).query)
+    assert query["url"] == [SITE_URL.group(1) + BADGE_FILE]
+    assert query["query"] == ["$.percent_covered_display"]
+    assert f"site/{BADGE_FILE}" in PAGES_WORKFLOW

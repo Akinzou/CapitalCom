@@ -37,6 +37,13 @@ Markdown. The ecosystem around MkDocs, read on 2026-11-12:
   not deployed on every push to `master`, because the site would then describe code that is
   not on PyPI.
 - `docs/superpowers/` (design notes and plans) is excluded from the site.
+- **The README's coverage badge reads its number from the site.** The site build runs the
+  unit tests with coverage and publishes the total alone as `badges/coverage.json`; the badge
+  is a shields.io dynamic JSON badge pointing at that file. A number typed into the README goes
+  stale without anyone noticing. Committing a badge from CI would need write access, which no
+  workflow has. A coverage service such as Codecov would add an account and an upload for one
+  number. The badge therefore shows the coverage of the published version, updated with the
+  site, and the README's diagrams are Mermaid, which GitHub renders and PyPI shows as source.
 
 ## Alternatives
 
