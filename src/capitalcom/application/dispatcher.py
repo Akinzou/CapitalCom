@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 from capitalcom.application.error_mapping import error_for
 from capitalcom.application.json_codec import encode_json
-from capitalcom.application.logs import get_logger
+from capitalcom.application.logs import get_logger, loggable_path
 from capitalcom.application.ports import Clock, HttpRequest, HttpResponse, HttpTransport
 from capitalcom.application.rate_limiter import RateLimiter
 from capitalcom.application.result import Err, Ok, Result
@@ -68,7 +68,11 @@ class Dispatcher:
             if attempt + 1 < self._policy.max_attempts:
                 delay = backoff_delay(self._policy, attempt, retry_after, self._rand)
                 _log.info(
-                    "retrying %s %s in %.2fs: %s", request.method, request.path, delay, last.error
+                    "retrying %s %s in %.2fs: %s",
+                    request.method,
+                    loggable_path(request.path),
+                    delay,
+                    last.error,
                 )
                 self._clock.sleep(delay)
         return last

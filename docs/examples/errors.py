@@ -6,6 +6,7 @@ from decimal import Decimal
 from capitalcom import (
     CapitalCom,
     CapitalComError,
+    ConfirmationTimeoutError,
     DealRejectedError,
     Direction,
     Environment,
@@ -43,9 +44,10 @@ def main() -> None:
         except SizeAdjustedError as error:
             # A deal was made, with another size; manage error.confirmation.
             print(f"booked {error.confirmation.size} instead of {error.requested}")
-        except OutcomeUnknownError:
-            # Sent, but no answer: the deal may exist. Look before sending it again.
-            print(f"outcome unknown; {len(cc.positions.list())} positions are open")
+        except (OutcomeUnknownError, ConfirmationTimeoutError):
+            # Sent, but not confirmed either way: the deal may exist. Look before sending it
+            # again. ConfirmationTimeoutError is not an OutcomeUnknownError; catch both here.
+            print(f"the deal may exist; {len(cc.positions.list())} positions are open")
         except RateLimitError:
             print("too many requests; wait before the next one")
         except CapitalComError as error:

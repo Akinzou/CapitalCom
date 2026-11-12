@@ -40,7 +40,7 @@ and the same on `cc.orders`):
 | `RateLimitError` | HTTP 429 after every allowed retry; `retry_after` holds the server's wait | Refused before acting |
 | `NotFoundError` | HTTP 404 | Answered with an error; no deal reference came back |
 | `ApiError` (other) | Another 4xx answer; `status` and `error_code` say which | Answered with an error; no deal reference came back |
-| `ResponseFormatError` | A response without the documented shape | May exist; see below |
+| `ResponseFormatError` | The login before the trade answered without the documented shape | The trade request was not sent |
 | `TransportError` | A connect timeout on the trade request, or the login before it failed | The trade request was not sent |
 | `OutcomeUnknownError` | Sent, with no usable answer | May exist |
 | `DealRejectedError` | The confirmation says `REJECTED`; `reason` says why | Not made |
@@ -54,9 +54,9 @@ Sources: [ADR 0005](../adr/0005-error-model.md),
 
 - 429 and 401 are refused by the server before it acts, which is why the library may resend
   even a trade after them ([ADR 0006](../adr/0006-retries-and-idempotency.md)).
-- A trade answer with a success status but no deal reference raises `ResponseFormatError`.
-  The server answered with success, so the deal may exist: treat it like
-  `OutcomeUnknownError` (`src/capitalcom/api/dealing.py`).
+- A trade answered with a success status whose body cannot be read, or that carries no deal
+  reference, raises `OutcomeUnknownError` with the `ResponseFormatError` as its cause: the
+  server took the request, so the deal may exist (`tests/unit/api/test_positions.py`).
 - `ConfirmationTimeoutError` is not a subclass of `OutcomeUnknownError`; catch both
   (`src/capitalcom/domain/errors.py`).
 - `StreamError` is a `TransportError` raised by a stream that gave up reconnecting, and
@@ -114,7 +114,8 @@ only if the deal is not there. The library never guesses for you
 
 **`ConfirmationTimeoutError`.** The deal was submitted and got a deal reference, but no final
 confirmation arrived before `confirm_timeout` (5 seconds by default) ran out, and it may
-still execute. Look exactly as for `OutcomeUnknownError`. `error.deal_reference` names the
+still execute. Look exactly as for `OutcomeUnknownError`; it is not a subclass of it, which
+is why the recipe catches both in one branch (`tests/unit/docs/test_examples.py`). `error.deal_reference` names the
 submission in your logs (`tests/unit/application/test_confirmer.py`).
 
 **`SizeAdjustedError`.** The server rounded the size and booked the deal.
@@ -193,9 +194,9 @@ the default retries ([ADR 0007](../adr/0007-partial-close-and-confirmation-facts
 - Behind a proxy that re-signs TLS, pass an `http_session` whose `verify` is the path of the
   proxy's CA bundle; REST requests keep that path
   (`tests/unit/infrastructure/test_adapters.py`).
-- The stream takes its CA bundle from the same session and from the `REQUESTS_CA_BUNDLE` and
-  `CURL_CA_BUNDLE` environment variables, by the rules of `requests`; without any of them it
-  uses the bundle `requests` ships with ([ADR 0012](../adr/0012-streaming.md),
+- The stream trusts the same CA bundle as REST: the session's `verify` path first, then the
+  `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` environment variables when the session trusts
+  the environment; without any of them it uses the bundle `requests` ships with ([ADR 0012](../adr/0012-streaming.md),
   `tests/unit/api/test_stream.py`).
 
 ## Secrets in logs and errors
@@ -204,6 +205,10 @@ the default retries ([ADR 0007](../adr/0007-partial-close-and-confirmation-facts
   `NullHandler` (`src/capitalcom/application/logs.py`).
 - The API key, the password and every session token are replaced by `***` in the records of
   the library's loggers (`tests/unit/application/test_result_ports_codec.py`).
+- A path in a log record shows the resource, not the deal: `/api/v1/positions/{id}` stands
+  for a position, order, confirmation or watchlist id
+  (`tests/unit/application/test_dispatcher.py`). Error messages do keep the deal reference,
+  so you can find the deal they are about.
 - The identifier (your login) is not on the masking list. It is kept out of `repr`, which
   shows only the environment (`tests/unit/api/test_facade.py`).
 - Error messages never contain request headers or bodies. A network error names only the

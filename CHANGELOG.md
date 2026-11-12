@@ -122,7 +122,16 @@ All notable changes to this project are documented in this file. The format foll
 - **Gap reasons.** A gap is `SERVER_CLOSED` only when the server started the close, and
   `NETWORK` when our side did. A drop after the session moved to another account, even one
   switched from another thread, is `ACCOUNT_SWITCHED`.
-- **Type checkers and the package root.** `from capitalcom import CapitalCom` (and every other
-  2.x name) is now an explicit re-export, which `mypy --strict` requires.
+- **Type checkers.** The package ships a `py.typed` marker, so a type checker reads its
+  annotations instead of treating it as untyped, and `from capitalcom import CapitalCom` (and
+  every other 2.x name) is an explicit re-export, which `mypy --strict` requires.
+- **A trade answer that cannot be read.** A trade the server answered with success but with
+  a body that is not JSON, or with no deal reference, raises `OutcomeUnknownError` (the
+  parse error is its cause) instead of `ResponseFormatError`: the deal may exist. The same
+  holds for every other call that changes state (ADR 0006).
+- **Stream CA bundle.** The stream trusts the same CA bundle as REST: a bundle path on the
+  session now beats `REQUESTS_CA_BUNDLE`, as it always did for REST (ADR 0012).
+- **Ids in logs.** Retry and rate-limit log records show `/api/v1/positions/{id}` instead of
+  the deal, order, confirmation or watchlist id.
 - **Deprecation link.** The `CapitalClient` deprecation warning points to the migration guide
   on the documentation site.

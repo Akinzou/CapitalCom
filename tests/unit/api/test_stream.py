@@ -176,7 +176,9 @@ def test_a_close_from_another_thread_ends_iteration() -> None:
     assert len(transport.urls) == 1
 
 
-def test_stream_trust_follows_requests_rules(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_stream_trusts_the_same_bundle_as_rest(monkeypatch: pytest.MonkeyPatch) -> None:
+    # REST passes the session's bundle explicitly, so it beats the environment; a stream
+    # that let REQUESTS_CA_BUNDLE win would silently trust a wider set than the user chose.
     import requests
 
     monkeypatch.delenv("CURL_CA_BUNDLE", raising=False)
@@ -184,12 +186,10 @@ def test_stream_trust_follows_requests_rules(monkeypatch: pytest.MonkeyPatch) ->
     assert stream_transport(None)._cafile == "/etc/ssl/certs"  # type: ignore[attr-defined]
     session = requests.Session()
     session.verify = "/path/to/bundle.pem"
-    # As in requests, the environment wins over session.verify...
-    assert stream_transport(session)._cafile == "/etc/ssl/certs"  # type: ignore[attr-defined]
-    # ...unless the session ignores the environment.
-    session.trust_env = False
     assert stream_transport(session)._cafile == "/path/to/bundle.pem"  # type: ignore[attr-defined]
-    session.verify = False
+    session.verify = False  # never switches checks off: the environment's bundle, as in REST
+    assert stream_transport(session)._cafile == "/etc/ssl/certs"  # type: ignore[attr-defined]
+    session.trust_env = False
     assert stream_transport(session)._cafile is None  # type: ignore[attr-defined]
 
 

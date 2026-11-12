@@ -30,6 +30,24 @@ class RedactionFilter(logging.Filter):
 
 _FILTER = RedactionFilter()
 
+# Resources whose next path segment identifies something in the account: a deal, an order, a
+# confirmation or a watchlist. Market epics and fixed sub-paths stay readable.
+_ID_RESOURCES = frozenset({"positions", "workingorders", "confirms", "watchlists"})
+
+
+def loggable_path(path: str) -> str:
+    """``path`` with account identifiers replaced by ``{id}``, for log messages.
+
+    Logs end up in places tokens never should and ids need not (public CI output, shared
+    tickets); the method and resource are what a retry diagnosis needs.
+    """
+    segments = path.split("/")
+    for index in range(1, len(segments)):
+        if segments[index - 1] in _ID_RESOURCES and segments[index]:
+            segments[index:] = ["{id}"] * (len(segments) - index)
+            break
+    return "/".join(segments)
+
 
 def get_logger(name: str) -> logging.Logger:
     """Return a ``capitalcom`` logger with redaction attached.

@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -183,3 +184,12 @@ def test_throttle_waits_like_send() -> None:
     dispatcher.throttle("GET", "/api/v1/accounts")
     assert clock.sleeps
     assert clock.sleeps[-1] > 0
+
+
+def test_retry_log_names_the_resource_but_not_the_deal(caplog: pytest.LogCaptureFixture) -> None:
+    # Contract runs log at INFO into public CI output; a deal id there is an account detail.
+    dispatcher, _, _ = make([response(429, headers={"Retry-After": "1"}), response(200, b"{}")])
+    with caplog.at_level(logging.INFO, logger="capitalcom"):
+        dispatcher.send(HttpRequest("DELETE", "/api/v1/positions/DEAL-SECRET-1"))
+    assert "DELETE /api/v1/positions/{id}" in caplog.text
+    assert "SECRET" not in caplog.text

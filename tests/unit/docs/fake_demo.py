@@ -43,8 +43,9 @@ def _btc_details() -> dict[str, Any]:
 class FakeDemo:
     """Registers every route the examples use; trades are confirmed from what was sent."""
 
-    def __init__(self, mock: responses.RequestsMock) -> None:
+    def __init__(self, mock: responses.RequestsMock, *, confirms: bool = True) -> None:
         self._refs = count(1)
+        self._confirms_ready = confirms
         self._confirms: dict[str, dict[str, Any]] = {}
         login = {"currentAccountId": ACCOUNT_ID}
         mock.post(f"{_API}/session", json=login, headers=TOKENS)
@@ -89,6 +90,9 @@ class FakeDemo:
 
     def _confirm(self, request: PreparedRequest) -> _Reply:
         reference = (request.url or "").rsplit("/", 1)[-1]
+        if not self._confirms_ready:
+            # What the server answers while a deal is still being processed.
+            return 400, {}, json.dumps({"errorCode": "error.invalid.dealReference"})
         return 200, {}, json.dumps(self._confirms[reference])
 
 

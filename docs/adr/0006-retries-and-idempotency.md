@@ -20,7 +20,7 @@ issues new tokens, and a repeated logout is answered 401, which logout treats as
 
 | Outcome | GET (and session calls) | other POST / PUT / DELETE |
 |---|---|---|
-| 2xx | done | done |
+| 2xx | done | done; a body that cannot be read is `OutcomeUnknownError` |
 | 429 | retry | retry (refused before acting) |
 | 429 with `Retry-After` > 60 s | `RateLimitError` at once | `RateLimitError` at once |
 | 401 | re-login once, resend | re-login once, resend (refused before acting) |
@@ -37,6 +37,14 @@ issues new tokens, and a repeated logout is answered 401, which logout treats as
 - When retries run out, the last attempt's error is returned.
 - TLS errors count as "may have been sent": `requests` raises the same `SSLError` for a failed
   handshake and for a connection dropped while the response was read.
+- The 401 row is the authenticated calls' (`ApiClient`): a 401 there means the session
+  expired, so one fresh login and one resend follow. A 401 on the login itself means the
+  credentials were refused and is returned as `AuthenticationError`, never answered with
+  another login; a 401 on logout counts as logged out.
+- A request that changes state and is answered 2xx took effect on the server, so a body that
+  is not JSON, or a trade answer without a usable `dealReference`, becomes
+  `OutcomeUnknownError` with the cause chained, never `ResponseFormatError`: the trade may
+  exist. A login that fails before the request is sent keeps its own error.
 - Once a deal is submitted, any failure while polling `/confirms` other than "not ready yet"
   becomes `OutcomeUnknownError` (with the cause chained), never the raw poll error.
 - A request body that cannot be encoded exactly fails with `ValidationError` before a

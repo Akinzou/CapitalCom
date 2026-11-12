@@ -133,11 +133,14 @@ this way in review. The stream's own ping, every 5 minutes
 with a 10 s answer timeout, detects a dead link instead. A half-open connection is therefore
 noticed within about 5 minutes and 10 seconds, and is reported as a `Gap`.
 
-TLS trusts what the REST transport trusts. The composition root asks `requests` itself
-(`Session.merge_environment_settings`), so `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` win
-over `session.verify` unless the session ignores the environment, exactly as for REST. A
-directory is used as `capath`; without any setting the bundle `requests` ships with is used.
-The system store alone would fail on installs where REST works.
+TLS trusts what the REST transport trusts. REST passes the session's CA bundle path on every
+call, so that path beats `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE`; the composition root asks
+`requests` (`Session.merge_environment_settings`) with that same explicit value, so the
+stream picks the same bundle. The environment applies only when the session names no bundle
+and trusts the environment. Letting the environment win for the stream alone would silently
+widen the trust a user narrowed on the session. A directory is used as `capath`; without any
+setting the bundle `requests` ships with is used. The system store alone would fail on
+installs where REST works.
 
 ### Logs never carry a token
 

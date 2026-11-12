@@ -14,7 +14,7 @@ from capitalcom.application.rate_limiter import RateLimiter
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import Credentials, SessionManager
 from capitalcom.domain.enums import STREAM_URL, Environment
-from capitalcom.infrastructure.requests_transport import RequestsTransport
+from capitalcom.infrastructure.requests_transport import RequestsTransport, tls_verify
 from capitalcom.infrastructure.system_clock import SystemClock
 
 
@@ -85,16 +85,18 @@ def stream_transport(http_session: requests.Session | None) -> StreamTransport:
 
 
 def _stream_verify(http_session: requests.Session | None) -> bool | str:
-    # requests' own merge, so the stream trusts what REST trusts: REQUESTS_CA_BUNDLE and
-    # CURL_CA_BUNDLE win over session.verify unless the session ignores the environment.
+    # The same merge REST gets from passing tls_verify() on every call, so both trust one
+    # bundle: the session's path beats REQUESTS_CA_BUNDLE / CURL_CA_BUNDLE, which apply only
+    # when the session names none and trusts the environment. Letting the environment win
+    # here would silently widen the trust a user narrowed on the session.
     session = http_session if http_session is not None else requests.Session()
     try:
-        settings = session.merge_environment_settings(STREAM_URL, {}, None, None, None)
+        explicit = tls_verify(session)
+        settings = session.merge_environment_settings(STREAM_URL, {}, None, explicit, None)
     finally:
         if http_session is None:
             session.close()
     verify = settings["verify"]
-    # False never switches verification off; it falls back to the default bundle.
     return verify if isinstance(verify, str) and verify else True
 
 

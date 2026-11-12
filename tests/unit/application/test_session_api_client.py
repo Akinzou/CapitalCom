@@ -13,7 +13,12 @@ from capitalcom.application.rate_limiter import RateLimiter, RequestKind, Slidin
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import Credentials, SessionManager, SessionTokens
-from capitalcom.domain.errors import AuthenticationError, ResponseFormatError, TransportError
+from capitalcom.domain.errors import (
+    AuthenticationError,
+    OutcomeUnknownError,
+    ResponseFormatError,
+    TransportError,
+)
 from capitalcom.domain.secret import Secret
 from tests.fakes import FakeClock, FakeTransport, response
 
@@ -180,6 +185,15 @@ def test_success_body_that_is_not_json_is_response_format_error() -> None:
     assert isinstance(result, Err)
     assert isinstance(result.error, ResponseFormatError)
     assert "maintenance" in result.error.body
+
+
+def test_unreadable_success_body_of_a_state_change_is_an_unknown_outcome() -> None:
+    # Any non-read, not only a trade: a watchlist POST the server took may have been created.
+    api, _, _, _ = make([login_ok(), response(200, b"<html>maintenance</html>")])
+    result = api.call("POST", "/api/v1/watchlists", json={"name": "w"})
+    assert isinstance(result, Err)
+    assert isinstance(result.error, OutcomeUnknownError)
+    assert isinstance(result.error.__cause__, ResponseFormatError)
 
 
 def test_logout_after_idle_timeout_sends_nothing() -> None:
