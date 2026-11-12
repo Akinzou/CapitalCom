@@ -1,6 +1,6 @@
 # capitalcom 2.0 — Documentation, debt sweep and release (stage 5)
 
-Status: draft, builder-checked · Date: 2026-11-12 · Branch: `rewrite/stage-5-docs-release`
+Status: approved by owner 2026-11-12 · Date: 2026-11-12 · Branch: `rewrite/stage-5-docs-release`
 Extends `2026-11-11-capitalcom-v2-design.md` (§9 stage 5) and
 `2026-11-12-streaming-addendum.md`. Where they disagree, this document wins for stage 5 only.
 
