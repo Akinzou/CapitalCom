@@ -33,6 +33,9 @@ from capitalcom.domain.errors import (
 # Half the server's 10-minute session: one late ping still lands inside it.
 KEEPALIVE_S = 300.0
 ACK_TIMEOUT_S = 10.0
+# How long an overdue keepalive answer may still take once the queue is empty: a socket that
+# stopped reading while its queue was full refills only after the queue was read from.
+DRAIN_GRACE_S = 1.0
 
 _log = get_logger("capitalcom.stream")
 
@@ -122,7 +125,7 @@ class StreamLink:
         # An overdue ack may be sitting behind frames a slow caller has not read yet, so the
         # queue is drained before the link is declared dead.
         while (ping := self._ping) is not None and self._overdue(ping):
-            received = self._connection.receive(0.0)
+            received = self._connection.receive(DRAIN_GRACE_S)
             if isinstance(received, Err):
                 return Err(received.error)
             if received.value is None:

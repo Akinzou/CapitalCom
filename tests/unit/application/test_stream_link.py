@@ -20,6 +20,7 @@ from tests.fakes import (
     FakeClock,
     FakeConnection,
     FakeStreamTransport,
+    Silence,
     StreamScript,
     ack_frame,
     auto_ack,
@@ -215,3 +216,17 @@ def test_drain_hands_over_events_buffered_by_a_failed_request() -> None:
     assert isinstance(link.request(SUBSCRIBE, {"epics": ["GOLD"]}, ["GOLD"]), Err)
     assert [e.value.epic for e in link.drain()] == ["A"]
     assert link.drain() == []
+
+
+def test_overdue_keepalive_ack_arriving_just_after_the_queue_empties_is_found() -> None:
+    # A flow-controlled socket refills its queue only after it has been read from, so the
+    # ack may be a moment behind the last queued frame.
+    link, _, clock = open_link([quote_frame("A"), quote_frame("B"), Silence(0.5), ack_frame("1")])
+    clock.advance(KEEPALIVE_S)
+    assert isinstance(link.next_incoming(), Ok)
+    clock.advance(15)
+    result = link.next_incoming()
+    assert isinstance(result, Ok)
+    assert isinstance(result.value, Event)
+    assert result.value.value.epic == "B"
+    assert isinstance(link.next_incoming(), Ok)

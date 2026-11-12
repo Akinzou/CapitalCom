@@ -1,10 +1,13 @@
 """WebSocket transport over the ``websockets`` synchronous client (the ``streaming`` extra)."""
 
 import logging
+import os
 import ssl
 from contextlib import ExitStack
+from pathlib import Path
 from urllib.parse import urlsplit
 
+from requests.utils import DEFAULT_CA_BUNDLE_PATH
 from websockets.exceptions import ConnectionClosed, WebSocketException
 from websockets.sync.client import ClientConnection, connect
 
@@ -26,6 +29,12 @@ class _DropFrameDumps(logging.Filter):
 
 _log = get_logger("capitalcom.websocket")
 _log.addFilter(_DropFrameDumps())
+# Every DEBUG record of the library is withheld, not only the dumps the filter knows: a
+# release that rewords its frame dump must not start leaking token fragments.
+_log.setLevel(logging.INFO)
+
+# Kept as a module name so tests can see the arguments the context is built with.
+_default_context = ssl.create_default_context
 
 
 class WebsocketConnection:
@@ -79,18 +88,41 @@ class WebsocketTransport:
         """Open ``url``; a refused handshake or certificate is a ``TransportError``."""
         if urlsplit(url).scheme != "wss":
             raise ValidationError("the stream URL must use wss")
-        context = ssl.create_default_context(cafile=self._cafile)
         # Entered as a context manager, the form every websockets release since 15 accepts
         # without a warning; the stack's close is the connection's close.
         stack = ExitStack()
         try:
+            context = self._context()
             connection = stack.enter_context(
-                connect(url, ssl=context, open_timeout=OPEN_TIMEOUT_S, logger=_log)
+                connect(
+                    url,
+                    ssl=context,
+                    open_timeout=OPEN_TIMEOUT_S,
+                    # The library's own keepalive is off: once its receive queue is full it
+                    # stops reading, misses its pongs and drops a link that is merely busy.
+                    # The stream's ping every 5 minutes, with its 10 s ack timeout, replaces it.
+                    ping_interval=None,
+                    logger=_log,
+                )
             )
         except (OSError, WebSocketException) as error:
             stack.close()
             return Err(TransportError(f"stream connect failed: {error}", reached_server=False))
         return Ok(WebsocketConnection(connection, stack))
+
+    def _context(self) -> ssl.SSLContext:
+        # The same trust as the REST transport: the bundle or directory the session names,
+        # else the variables requests reads, else requests' own bundle. The system store
+        # alone would fail on some installs where REST works.
+        if self._cafile is not None and Path(self._cafile).is_dir():
+            return _default_context(cafile=None, capath=self._cafile)
+        bundle = (
+            self._cafile
+            or os.environ.get("REQUESTS_CA_BUNDLE")
+            or os.environ.get("CURL_CA_BUNDLE")
+            or DEFAULT_CA_BUNDLE_PATH
+        )
+        return _default_context(cafile=bundle)
 
 
 def _closed(closed: ConnectionClosed) -> TransportError:

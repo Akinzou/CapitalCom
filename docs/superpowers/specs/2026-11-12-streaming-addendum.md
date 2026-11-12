@@ -142,7 +142,9 @@ Costs, to be documented:
   keeps the socket open (P7), so no data is lost; the next keepalive simply gets fresh tokens.
 - No library code drops quotes. While the caller is slow, unread frames wait in the
   adapter's bounded receive queue, and when that queue is full the adapter stops reading the
-  socket. Staleness is visible from `Quote.time`.
+  socket. Staleness is visible from `Quote.time`. (Correction found in review: the library's
+  own protocol keepalive would then miss its pongs and drop the link, so it is off; see
+  ADR 0012.)
 
 ### 5.3 Reconnects, tokens and account switches
 

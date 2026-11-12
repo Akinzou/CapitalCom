@@ -100,16 +100,22 @@ class FakeConnection:
         return Ok(None)
 
     def receive(self, timeout_s: float) -> Result[str | None, TransportError]:
-        item = self._script.popleft() if self._script else Silence(timeout_s)
+        assert self.clock is not None, "connect the fake through FakeStreamTransport"
+        if not self._script:
+            self.clock.advance(timeout_s)
+            return Ok(None)
+        item = self._script.popleft()
         if isinstance(item, TransportError):
             return Err(item)
         if isinstance(item, Silence):
-            waited = min(item.seconds, timeout_s)
-            if item.seconds > timeout_s:
-                self._script.appendleft(Silence(item.seconds - timeout_s))
-            assert self.clock is not None, "connect the fake through FakeStreamTransport"
-            self.clock.advance(waited)
-            return Ok(None)
+            # Like a real receive, a silence shorter than the timeout does not end the wait.
+            if item.seconds >= timeout_s:
+                if item.seconds > timeout_s:
+                    self._script.appendleft(Silence(item.seconds - timeout_s))
+                self.clock.advance(timeout_s)
+                return Ok(None)
+            self.clock.advance(item.seconds)
+            return self.receive(timeout_s - item.seconds)
         return Ok(item)
 
     def close(self) -> None:

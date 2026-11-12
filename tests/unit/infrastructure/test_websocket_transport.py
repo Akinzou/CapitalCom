@@ -7,12 +7,14 @@ import ssl
 import threading
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+from requests.utils import DEFAULT_CA_BUNDLE_PATH
 from websockets.sync.server import ServerConnection, serve
 
 from capitalcom.application.logs import forget_secret, register_secret
@@ -21,6 +23,7 @@ from capitalcom.application.session import SessionTokens
 from capitalcom.application.stream_frames import encode_frame
 from capitalcom.domain.errors import TransportError, ValidationError
 from capitalcom.domain.secret import Secret
+from capitalcom.infrastructure import websocket_transport
 from capitalcom.infrastructure.websocket_transport import WebsocketTransport
 
 # An address, not "localhost": on Windows the name resolves to ::1 first and every connect
@@ -171,7 +174,70 @@ def test_debug_logging_never_shows_tokens(
     finally:
         forget_secret(cst)
         forget_secret(xst)
-    assert any(r.name == "capitalcom.websocket" for r in caplog.records)
     # Frame dumps are cut to a fixed length, so a masked token could still leak in part.
     for fragment in ("CSTtoken", "XSTtoken", "c" * 12, "x" * 12):
         assert fragment not in caplog.text
+
+
+def _capture(monkeypatch: pytest.MonkeyPatch, name: str) -> dict[str, Any]:
+    """Record the keyword arguments of ``name`` in the adapter module, still calling it."""
+    seen: dict[str, Any] = {}
+    target = getattr(websocket_transport, name)
+
+    def spy(*args: Any, **kwargs: Any) -> Any:
+        seen.update(kwargs)
+        return target(*args, **kwargs)
+
+    monkeypatch.setattr(websocket_transport, name, spy)
+    return seen
+
+
+def test_library_keepalive_is_off(
+    server: tuple[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # With 16 frames queued the library stops reading, misses its own pongs and drops the
+    # link after ~40 s; the stream's 5-minute ping and 10 s ack timeout replace it.
+    url, cert = server
+    seen = _capture(monkeypatch, "connect")
+    connected = WebsocketTransport(str(cert)).connect(f"{url}/echo")
+    assert isinstance(connected, Ok)
+    connected.value.close()
+    assert seen["ping_interval"] is None
+    assert seen["logger"] is logging.getLogger("capitalcom.websocket")
+
+
+def test_default_trust_store_is_the_one_rest_uses(
+    server: tuple[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url, cert = server
+    monkeypatch.delenv("CURL_CA_BUNDLE", raising=False)
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", str(cert))
+    connected = WebsocketTransport().connect(f"{url}/echo")
+    assert isinstance(connected, Ok)
+    connected.value.close()
+    monkeypatch.delenv("REQUESTS_CA_BUNDLE")
+    seen = _capture(monkeypatch, "_default_context")
+    WebsocketTransport().connect(f"{url}/echo")
+    assert seen["cafile"] == DEFAULT_CA_BUNDLE_PATH
+
+
+def test_ca_directory_is_used_as_capath(
+    server: tuple[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    url, cert = server
+    seen = _capture(monkeypatch, "_default_context")
+    WebsocketTransport(str(cert.parent)).connect(f"{url}/echo")
+    assert seen == {"cafile": None, "capath": str(cert.parent)}
+
+
+def test_missing_ca_bundle_is_a_transport_error(server: tuple[str, Path]) -> None:
+    url, cert = server
+    connected = WebsocketTransport(str(cert.parent / "missing.pem")).connect(f"{url}/echo")
+    assert isinstance(connected, Err)
+    assert not connected.error.reached_server
+
+
+def test_no_debug_record_of_the_library_is_emitted(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG)
+    logging.getLogger("capitalcom.websocket").debug("a reworded frame dump: %s", "XSTtokenxx")
+    assert "XSTtoken" not in caplog.text

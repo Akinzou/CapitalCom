@@ -41,6 +41,10 @@ background feed runs the loop in a thread of their own. The cost is that a loop 
 for longer than the 5-minute keepalive delays the ping. The server keeps the socket open
 (P7), so the next keepalive simply gets fresh tokens.
 
+To stop a loop that runs in another thread, call `close()` on the stream or the client from
+any thread. The blocked read then fails, and the stream ends iteration instead of treating
+the failure as a drop and reconnecting.
+
 ### The host is pinned
 
 The URL is the constant `wss://api-streaming-capital.backend-capital.com/connect` for both
@@ -85,13 +89,16 @@ demo reports still matches the pinned host, so drift shows up in CI.
   closes.
 - A refused login or a refused key on resubscription is raised at once.
 - After a successful resubscription the stream yields one `Gap(since, until, reason)`:
-  - `since` is the local time the last event was received;
+  - `since` is the time of the last event delivered, or read before the drop: its server time,
+    bounded by the local clock. A reader lagging behind the feed would otherwise date the gap
+    from when it read that event, and the events lost in between would fall outside the gap;
   - events read before the drop come out before the `Gap`, and events from the new
     connection after it;
   - the reason is `SERVER_CLOSED` when the server sent a close frame, `ACCOUNT_SWITCHED`
     after an account change, and `NETWORK` otherwise.
-- Before an overdue keepalive answer is declared missing, frames already queued are read.
-  This keeps a slow consumer on a busy feed from reconnecting every five minutes.
+- Before an overdue keepalive answer is declared missing, frames already queued are read,
+  with a grace of 1 s once the queue is empty. This keeps a slow consumer on a busy feed
+  from reconnecting every five minutes.
 - Resubscription sends one quote frame plus one OHLC frame per exact set of resolutions and
   candle type. A single epics × resolutions frame would also subscribe pairs the caller had
   removed.
@@ -100,17 +107,30 @@ demo reports still matches the pinned host, so drift shows up in CI.
 
 The `streaming` extra installs `websockets>=15`. It ships type information, so `mypy
 --strict` checks the adapter, and its synchronous client has `recv(timeout=...)`, a bounded
-receive queue, protocol-level keepalive and an `ssl=` context. Version 15 is the floor this
-design was checked against: its synchronous client already offers all of these. Since 17.1, using `connect()` without a `with` block
-is deprecated, so the adapter enters the connection through an `ExitStack`; that form works
-on every supported version.
+receive queue and an `ssl=` context. Version 15 is the floor this design was checked
+against: its synchronous client already offers all of these. Since 17.1, using `connect()`
+without a `with` block is deprecated, so the adapter enters the connection through an
+`ExitStack`; that form works on every supported version.
+
+The library's protocol-level keepalive is turned off. When its receive queue is full it stops
+reading the socket, so it also misses its own pongs and drops a link that is merely busy;
+with defaults of 20 s ping interval and 20 s timeout, a loop body sleeping 50 s lost the link
+this way in review. The stream's own ping, every 5 minutes
+with a 10 s answer timeout, detects a dead link instead. A half-open connection is therefore
+noticed within about 5 minutes and 10 seconds, and is reported as a `Gap`.
+
+TLS trusts what the REST transport trusts: the CA bundle or directory named by an injected
+`requests.Session`, else `REQUESTS_CA_BUNDLE` or `CURL_CA_BUNDLE`, else the bundle `requests`
+ships with. The system store alone would fail on installs where REST works.
 
 ### Logs never carry a token
 
 Every request frame contains the session tokens. The library never logs a frame. The
 `websockets` logger is replaced by `capitalcom.websocket`, whose records pass through the
-token-masking filter. The library's own frame dumps are dropped as well: they are cut to a
-fixed length, so a token split by the cut would escape masking of the whole value.
+token-masking filter. That logger is set to INFO, so no DEBUG record of the library is
+emitted, and its frame dumps are also filtered by name. The dumps are cut to a fixed length,
+so a token split by the cut would escape masking of the whole value, and a release that
+rewords them must not start leaking.
 
 ## Consequences
 
