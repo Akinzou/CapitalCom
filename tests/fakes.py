@@ -115,6 +115,10 @@ class FakeConnection:
     def close(self) -> None:
         self.closed = True
 
+    def then(self, *items: "str | TransportError | Silence") -> None:
+        """Script more items after what is already queued."""
+        self._script.extend(items)
+
     def destinations(self) -> list[str]:
         return [frame["destination"] for frame in self.sent]
 
