@@ -232,9 +232,10 @@ When several threads share one `CapitalCom`, the library guarantees:
   ([ADR 0006](../adr/0006-retries-and-idempotency.md),
   `tests/unit/application/test_session_api_client.py`);
 - the rate limiter books send times under one lock, so two threads never share a slot, and
-  a request takes the first slot its own limits allow: a read does not wait behind a login or
-  trades held back by their own limits, so requests may go out in a different order than
-  they were made (`tests/unit/application/test_retry_rate_limiter.py`,
+  a request takes the first slot its own limits allow: a read does not wait behind trades
+  queued at one per 0.1 s, so requests may go out in a different order than they were made.
+  Session calls (login, logout, account switch) never go before a request already queued
+  (`tests/unit/application/test_retry_rate_limiter.py`,
   `tests/unit/application/test_rate_limiter_order.py`);
 - requests already in flight on other threads during `cc.session.switch_account` may run on
   either account, so switch before starting work on an account, not while trading

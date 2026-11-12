@@ -4,7 +4,7 @@ import random
 
 import pytest
 
-from capitalcom.application.rate_limiter import RateLimiter, RequestKind, SlidingWindow
+from capitalcom.application.rate_limiter import RateLimiter, RequestKind, SlidingWindow, classify
 from tests.fakes import FrozenClock
 
 LOGIN = ("POST", "/api/v1/session")
@@ -19,7 +19,9 @@ def _booked(limiter: RateLimiter, clock: FrozenClock, request: tuple[str, str]) 
     return clock.monotonic() + (clock.sleeps[-1] if len(clock.sleeps) > before else 0.0)
 
 
-def test_a_read_does_not_wait_behind_a_login_held_back_by_session() -> None:
+def test_the_limiter_lets_a_read_past_a_login_held_back_by_session() -> None:
+    # Through the client the read still waits, on the session lock, for the tokens that login
+    # brings (ADR 0006); the limiter itself adds no wait.
     clock = FrozenClock()
     limiter = RateLimiter(clock)
     assert [_booked(limiter, clock, r) for r in (LOGIN, LOGIN, READ)] == [0.0, 1.0, 0.0]
@@ -31,6 +33,21 @@ def test_a_read_does_not_wait_behind_queued_trades() -> None:
     trades = [_booked(limiter, clock, TRADE) for _ in range(5)]
     assert trades == pytest.approx([0.0, 0.1, 0.2, 0.3, 0.4])
     assert _booked(limiter, clock, READ) == 0.0
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT", "DELETE"])
+def test_a_session_call_never_overtakes_a_booking(method: str) -> None:
+    # A logout or account switch that went first would leave a queued trade holding ended
+    # tokens, or move it to the other account.
+    clock = FrozenClock()
+    limiter = RateLimiter(clock)
+    trades = [_booked(limiter, clock, TRADE) for _ in range(2)]
+    assert _booked(limiter, clock, (method, "/api/v1/session")) >= trades[-1]
+
+
+def test_a_window_needs_room_for_one_send() -> None:
+    with pytest.raises(ValueError, match="limit"):
+        SlidingWindow(0, 1.0)
 
 
 def test_a_full_general_window_still_waits() -> None:
@@ -50,18 +67,18 @@ def test_a_trade_burst_keeps_a_tenth_apart_despite_float_sums() -> None:
 
 
 _LIMITS = {RequestKind.GENERAL: (3, 4), RequestKind.TRADE: (1, 2), RequestKind.SESSION: (1, 3)}
-_KINDS = {
-    LOGIN: {RequestKind.GENERAL, RequestKind.SESSION},
-    TRADE: {RequestKind.GENERAL, RequestKind.TRADE},
-    READ: {RequestKind.GENERAL},
-}
+LOGOUT = ("DELETE", "/api/v1/session")
 
 
-def _oracle(history: dict[RequestKind, list[int]], kinds: set[RequestKind], now: int) -> int:
+def _oracle(history: dict[RequestKind, list[int]], request: tuple[str, str], now: int) -> int:
     """Earliest whole second at or after ``now`` that leaves no window over its limit.
 
     Counts sends in every window-long span, instead of the limiter's spans between bookings.
+    A session call also waits for every booking, since every request counts in GENERAL.
     """
+    kinds = classify(*request)
+    if request[1] == "/api/v1/session":
+        now = max([now, *history[RequestKind.GENERAL]])
 
     def allowed(t: int) -> bool:
         for kind in kinds:
@@ -83,9 +100,9 @@ def test_random_interleavings_match_a_brute_force_search(seed: int) -> None:
     history: dict[RequestKind, list[int]] = {kind: [] for kind in RequestKind}
     for _ in range(25):
         clock.advance(rng.choice([0, 0, 1, 2]))
-        request = rng.choice([LOGIN, TRADE, READ, READ, READ])
+        request = rng.choice([LOGIN, LOGOUT, TRADE, TRADE, READ, READ, READ])
         now = int(clock.monotonic())
-        expected = _oracle(history, _KINDS[request], now)
+        expected = _oracle(history, request, now)
         assert _booked(limiter, clock, request) == expected
-        for kind in _KINDS[request]:
+        for kind in classify(*request):
             history[kind].append(expected)

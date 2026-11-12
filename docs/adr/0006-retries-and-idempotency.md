@@ -63,11 +63,14 @@ issues new tokens, and a repeated logout is answered 401, which logout treats as
   and records that same time in all of them, so a login delayed by SESSION counts in GENERAL
   when it is really sent. The caller sleeps outside the lock. A booking may land before
   earlier ones that lie in the future: 2.0.0 booked in order per window (FIFO), so a read on
-  another thread waited up to a second behind a login that SESSION held back, or behind
-  queued trades, while GENERAL had room. The cost is that a later request can go first; no
-  request waits longer than its windows require, and any `limit + 1` consecutive sends of a
-  window still span at least the window (`tests/unit/application/test_rate_limiter_order.py`
-  checks this against a brute-force search).
+  another thread waited up to a second behind trades queued by TRADE while GENERAL had room.
+  The cost is that a later request can go first. Session calls are the exception and book
+  no earlier than the latest booking, because a logout or account switch that overtook a
+  queued trade would leave it with ended tokens or on the other account. A read still waits
+  for a login held back by SESSION, but on the session lock, which it needs anyway for the
+  tokens that login brings. Any `limit + 1` consecutive sends of a window span at least the
+  window, and no request is booked later than its windows require;
+  `tests/unit/application/test_rate_limiter_order.py` checks both against a brute-force search.
 - Session tokens are renewed after 570 s idle (the server expires them at 600 s). One lock
   covers check-and-login, so threads that find an expired session cause one login.
 
