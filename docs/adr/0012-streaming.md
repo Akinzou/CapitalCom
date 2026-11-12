@@ -142,6 +142,18 @@ widen the trust a user narrowed on the session. A directory is used as `capath`;
 setting the bundle `requests` ships with is used. The system store alone would fail on
 installs where REST works.
 
+The synchronous client of `websockets` reads in a background thread while the caller's thread
+writes, so both use one OpenSSL connection at once, which OpenSSL does not support
+(openssl/openssl#20622, open). Against the local test server about one connect in 500 lost
+the HTTP upgrade request and hung for the 10 s open timeout: the server's TLS 1.3 session
+tickets reached the reader thread while the request was being written. Over a real network
+the tickets arrive a round trip after the request has been sent, and the reader handles them
+before the upgrade answer, so `connect()` returns only after they are processed; the test
+server sends no tickets (`websockets` does the same in its own suite). What remains is
+upstream risk this library cannot remove without replacing the client: a frame lost that way
+surfaces as a missing acknowledgement, which the stream turns into a reconnect and a `Gap`,
+and a lost first connect raises `TransportError` from `cc.stream.connect()`.
+
 ### Logs never carry a token
 
 Every request frame contains the session tokens. The library never logs a frame. The
@@ -158,3 +170,5 @@ rewords them must not start leaking.
   is available.
 - The 10-minute behaviour (P1, P7) is a probe fact, not a CI test; the contract test covers
   the host, one quote, one bar and a clean close.
+- Simultaneous reads and writes on one TLS connection are an upstream risk (see the
+  `websockets` section); the stream reports what it may cause, it does not prevent it.

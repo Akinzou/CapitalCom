@@ -92,18 +92,29 @@ def _handle(connection: ServerConnection) -> None:
         connection.recv()
 
 
+def _server_context(cert: Path, key: Path) -> ssl.SSLContext:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(cert, key)
+    # No TLS 1.3 session tickets. On loopback they reach the client's reader thread while
+    # its caller thread writes the HTTP upgrade on the same SSL object, an overlap OpenSSL
+    # does not support (openssl/openssl#20622); about one connect in 500 lost the request
+    # and hung for the full open timeout. Over a real network they come a round trip later,
+    # after the request; the risk that remains is recorded in ADR 0012. websockets' suite
+    # disables tickets too, for client connects that hang (it cites openssl/openssl#7967).
+    context.num_tickets = 0
+    return context
+
+
 @pytest.fixture(scope="module")
 def tls(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, ssl.SSLContext]:
     cert, key = _certificate(tmp_path_factory.mktemp("tls"))
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(cert, key)
-    return cert, context
+    return cert, _server_context(cert, key)
 
 
 @pytest.fixture
 def server(tls: tuple[Path, ssl.SSLContext]) -> Iterator[tuple[str, Path]]:
-    # A server per test: a connection one test leaves behind (a refused certificate, a close
-    # the client never answered) cannot delay the next test's handshake.
+    # A server per test keeps tests independent: nothing one test leaves open (a refused
+    # certificate, a close the client never answered) is still there for the next one.
     cert, context = tls
     # The server's own log goes to stderr, shown by pytest on a failure; it never reaches
     # caplog, whose text the token test inspects.
