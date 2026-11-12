@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from capitalcom.api.composition import Core, build_core
+from capitalcom.api.orders import OrdersResource
 from capitalcom.application.result import Err
 from capitalcom.application.session import Credentials
 from capitalcom.domain.confirmation import DealConfirmation
@@ -111,21 +112,26 @@ def btc(demo_core: Core) -> Iterator[Market]:
 
 def btc_order_ids(core: Core) -> set[str]:
     """Working orders on BTCUSD of the demo account."""
-    payload = core.api.call("GET", "/api/v1/workingorders").unwrap()
-    return {
-        item["workingOrderData"]["dealId"]
-        for item in payload["workingOrders"]
-        if item["workingOrderData"]["epic"] == EPIC
-    }
+    return {order.deal_id for order in OrdersResource(core).list() if order.epic == EPIC}
 
 
 @pytest.fixture
 def btc_orders(demo_core: Core) -> Iterator[None]:
-    """Afterwards cancels every BTCUSD order the test placed, and none that existed before."""
+    """Afterwards cancels every BTCUSD order the test placed, and none that existed before.
+
+    Every cancel is tried even when one fails, so one refusal cannot leave the rest open.
+    Failures are reported by type only: the log is public, and ids do not belong in it.
+    """
     before = btc_order_ids(demo_core)
     yield
+    orders = OrdersResource(demo_core)
+    failures: list[str] = []
     for deal_id in sorted(btc_order_ids(demo_core) - before):
         log.warning("cancelling an order left by the test")
-        cancelled = demo_core.api.call("DELETE", f"/api/v1/workingorders/{deal_id}").unwrap()
-        demo_core.confirmer.confirm(cancelled["dealReference"]).unwrap()
+        try:
+            orders.cancel(deal_id)
+        except Exception as error:  # noqa: BLE001 - every order must get its cancel attempt
+            failures.append(type(error).__name__)
+    if failures:
+        pytest.fail(f"{len(failures)} order cancel(s) failed: {', '.join(failures)}")
     assert not btc_order_ids(demo_core) - before, "orders placed by the run are still open"

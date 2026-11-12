@@ -28,7 +28,13 @@ def test_lot_to_size_unchanged() -> None:
     assert client.pips_to_profit_distance(0, 4) is None
 
 
-def test_version_is_v2_dev() -> None:
+def test_installed_version_matches_pyproject() -> None:
+    # Compared with pyproject.toml rather than a literal, so a release bump cannot leave
+    # this test behind, and a stale editable install is still caught.
+    import tomllib
     from importlib.metadata import version
+    from pathlib import Path
 
-    assert version("capitalcom") == "2.0.0.dev0"
+    pyproject = Path(__file__).parents[2] / "pyproject.toml"
+    declared = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["version"]
+    assert version("capitalcom") == declared
