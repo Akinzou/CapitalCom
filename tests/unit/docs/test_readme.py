@@ -33,9 +33,9 @@ def contents_links() -> list[str]:
     return re.findall(r"\]\(#([^)]+)\)", section.group(1))
 
 
-def test_every_contents_link_reaches_a_heading() -> None:
+def test_every_in_page_link_reaches_a_heading() -> None:
     anchors = {github_anchor(h) for h in headings("##") + headings("###")}
-    assert set(contents_links()) <= anchors
+    assert set(re.findall(r"\]\(#([^)]+)\)", outside_code(README))) <= anchors
 
 
 def test_every_section_is_in_the_contents() -> None:
@@ -47,13 +47,12 @@ def test_coverage_badge_reads_the_file_the_site_publishes() -> None:
     # The number comes from the test run in the site build; a badge pointing anywhere else
     # would show "resource not found" on the project page instead of the coverage.
     assert SITE_URL is not None
-    # The title carries this badge and nothing else; the others sit on the lines below it.
-    badge = re.fullmatch(
-        r"# CapitalCom \[!\[Code Coverage\]\((https://img\.shields\.io/badge/dynamic/json\?"
-        r"[^)\s]+)\)\]\(([^)]+)\)",
-        README.splitlines()[0],
+    badge = re.search(
+        r"\[!\[Code Coverage\]\((https://img\.shields\.io/badge/dynamic/json\?[^)\s]+)\)\]"
+        r"\(([^)]+)\)",
+        README,
     )
-    assert badge is not None, "the title line is not the title plus the coverage badge"
+    assert badge is not None, "README has no linked dynamic coverage badge"
     # The link leads to the runs that measured the number, so a reader can check it.
     assert badge.group(2).endswith("/actions/workflows/pages.yml")
     query = parse_qs(urlparse(badge.group(1)).query)
@@ -61,3 +60,10 @@ def test_coverage_badge_reads_the_file_the_site_publishes() -> None:
     assert query["query"] == ["$.percent_covered_display"]
     assert query["label"] == ["Code Coverage"]
     assert f"site/{BADGE_FILE}" in PAGES_WORKFLOW
+
+
+def test_the_title_carries_the_coverage_badge_alone() -> None:
+    # The other badges sit on the lines below the title.
+    title = README.splitlines()[0]
+    assert title.startswith("# CapitalCom [![Code Coverage](")
+    assert title.count("[![") == 1

@@ -8,8 +8,9 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Documentation
 
-- The README has a table of contents, a coverage badge, and diagrams of the layers, of a trade
-  from request to confirmation, and of the error types.
+- The README has a table of contents, a "Code Coverage" badge beside the title with the other
+  badges below it, and diagrams of the layers, of a trade from request to confirmation, and of
+  the error types. The PyPI and licence badges link to the project page and the licence.
 
 ## [2.0.1] — 2026-11-12
 
