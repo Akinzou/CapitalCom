@@ -6,8 +6,9 @@ from typing import Any
 
 from capitalcom.application.ports import StreamConnection
 from capitalcom.application.result import Err, Ok, Result
+from capitalcom.application.stream_frames import INVALID_SESSION
 from capitalcom.application.stream_session import StreamClosedError, StreamSession
-from capitalcom.domain.errors import ResponseFormatError, TransportError, ValidationError
+from capitalcom.domain.errors import AuthenticationError, TransportError, ValidationError
 from capitalcom.domain.streaming import Gap, Quote
 from tests.fakes import (
     EPOCH,
@@ -140,10 +141,13 @@ def test_close_during_resubscription_closes_the_new_connection() -> None:
 
 
 def test_a_subscribe_failing_otherwise_leaves_no_unconfirmed_keys() -> None:
-    stream, _, _, _ = open_stream([FakeConnection(["[]"])])
+    # A malformed frame no longer fails a subscribe (it is queued), so the "otherwise" failure
+    # is a login refused for the stream twice.
+    refused = [ack_frame(n, status="ERROR", error_code=INVALID_SESSION) for n in ("1", "2")]
+    stream, _, _, _ = open_stream([FakeConnection(refused)])
     result = stream.subscribe_quotes(["OIL"])
     assert isinstance(result, Err)
-    assert isinstance(result.error, ResponseFormatError)
+    assert isinstance(result.error, AuthenticationError)
     assert stream.subscriptions.quotes == ()
 
 

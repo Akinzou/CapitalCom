@@ -105,3 +105,7 @@ All notable changes to this project are documented in this file. The format foll
 - **Clearer format errors.** An account preference without the leverage in force says the field
   is missing instead of "expected an integer, got NoneType", and a malformed
   `currentAccountId` in a login answer names the field and what is wrong with it.
+- **Malformed stream frames.** A frame that cannot be decoded no longer aborts a subscribe or
+  closes the stream during a reconnect. It is raised as `ResponseFormatError` at its position
+  among the events, and iteration may go on. If the unreadable frame was the awaited
+  acknowledgement itself, the wait times out into a reconnect and a `NETWORK` gap.

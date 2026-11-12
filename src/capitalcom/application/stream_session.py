@@ -14,25 +14,20 @@ from typing import TypeAlias, TypeVar
 from capitalcom.application import stream_requests as requests
 from capitalcom.application.ports import Clock, StreamTransport
 from capitalcom.application.result import Err, Ok, Result
-from capitalcom.application.retry import RetryPolicy, backoff_delay
 from capitalcom.application.session import SessionManager
 from capitalcom.application.stream_link import AckTimeoutError, StreamLink
-from capitalcom.application.stream_requests import resubscribe_requests
+from capitalcom.application.stream_reconnect import open_resubscribed
 from capitalcom.domain.enums import Resolution
 from capitalcom.domain.errors import (
     AuthenticationError,
     CapitalComError,
-    StreamError,
+    ResponseFormatError,
     SubscriptionError,
     TransportError,
     ValidationError,
 )
 from capitalcom.domain.streaming import Candle, CandleType, Gap, GapReason, Quote
 from capitalcom.domain.subscriptions import Subscriptions
-
-MAX_RECONNECTS = 5
-# 1, 2, 4, 8, then 16 s, each with equal jitter (addendum 5.3).
-RECONNECT_POLICY = RetryPolicy(max_attempts=MAX_RECONNECTS, base_delay_s=1.0, max_delay_s=16.0)
 
 StreamEvent: TypeAlias = Quote | Candle | Gap
 T = TypeVar("T")
@@ -63,7 +58,8 @@ class StreamSession:
         self._rand = rand
         self._subs = Subscriptions()
         self._link: StreamLink | None = None
-        self._ready: deque[StreamEvent] = deque()
+        # Undecodable frames stay at their position among the events (see StreamLink).
+        self._ready: deque[StreamEvent | ResponseFormatError] = deque()
         self._last_event_at = clock.now_utc()
         self._account: str | None = None
         self._closed = False
@@ -133,7 +129,8 @@ class StreamSession:
             if self._closed:
                 return Err(StreamClosedError())
             if self._ready:
-                return Ok(self._ready.popleft())
+                item = self._ready.popleft()
+                return Err(item) if isinstance(item, ResponseFormatError) else Ok(item)
             link = self._usable()
             if isinstance(link, Err):
                 return link
@@ -226,54 +223,42 @@ class StreamSession:
         if self._link is not None:
             # Events read before the drop come out before the Gap that follows them, and the
             # gap starts after the last of them.
-            drained = [event.value for event in self._link.drain()]
-            since = max([since, *(self._received_at(event) for event in drained)])
+            drained = [
+                item if isinstance(item, ResponseFormatError) else item.value
+                for item in self._link.drain()
+            ]
+            read = [item for item in drained if not isinstance(item, ResponseFormatError)]
+            since = max([since, *(self._received_at(event) for event in read)])
             self._ready.extend(drained)
             self._link.close()
             self._link = None
-        last: CapitalComError | None = None
-        for attempt in range(MAX_RECONNECTS):
-            self._clock.sleep(backoff_delay(RECONNECT_POLICY, attempt, None, self._rand))
-            if self._closed:
-                return Err(StreamClosedError())
-            connected = self._transport.connect(self._url)
-            if isinstance(connected, Err):
-                last = connected.error
-                continue
-            link = StreamLink(connected.value, self._session, self._clock)
-            # Re-checked around the slow steps: a close from another thread must not leave a
-            # socket open behind it, nor be answered with a fresh subscription.
-            resubscribed = self._resubscribe(link) if not self._closed else Ok(None)
-            if isinstance(resubscribed, Ok):
-                self._link = link
-                # Checked after the link is stored: a close() in between either sees the link
-                # and closes it, or is seen here.
-                if self._closed:
-                    link.close()
-                    self._link = None
-                    return Err(StreamClosedError())
-                self._account = self._session.current_account_id or self._account
-                until = max(self._clock.now_utc(), since)
-                self._ready.append(Gap(since, until, reason))
-                # The next gap starts after this one, not again from before it.
-                self._last_event_at = until
-                return Ok(None)
+        opened = open_resubscribed(
+            self._transport,
+            self._url,
+            self._session,
+            self._clock,
+            self._subs,
+            self._rand,
+            lambda: self._closed,
+        )
+        if isinstance(opened, Err):
+            self.close()
+            return Err(opened.error)
+        link = opened.value
+        if link is None:
+            return Err(StreamClosedError())
+        self._link = link
+        # Checked after the link is stored: a close() in between either sees the link and
+        # closes it, or is seen here.
+        if self._closed:
             link.close()
-            last = resubscribed.error
-            if not isinstance(last, TransportError):
-                # A refused login or a refused key will not change on the next attempt.
-                self.close()
-                return Err(last)
-        self.close()
-        error = StreamError(f"stream lost; {MAX_RECONNECTS} reconnects failed")
-        error.__cause__ = last
-        return Err(error)
-
-    def _resubscribe(self, link: StreamLink) -> Result[None, CapitalComError]:
-        for destination, payload, keys in resubscribe_requests(self._subs):
-            sent = link.request(destination, payload, keys)
-            if isinstance(sent, Err):
-                return Err(sent.error)
+            self._link = None
+            return Err(StreamClosedError())
+        self._account = self._session.current_account_id or self._account
+        until = max(self._clock.now_utc(), since)
+        self._ready.append(Gap(since, until, reason))
+        # The next gap starts after this one, not again from before it.
+        self._last_event_at = until
         return Ok(None)
 
     def _received_at(self, event: Quote | Candle) -> datetime:

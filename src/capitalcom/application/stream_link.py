@@ -68,7 +68,9 @@ class StreamLink:
         self._connection = connection
         self._session = session
         self._clock = clock
-        self._buffer: deque[Event] = deque()
+        # Undecodable frames wait here in arrival order, beside the events: raised at once,
+        # one would abort an ack wait whose answer may still be on its way.
+        self._buffer: deque[Event | ResponseFormatError] = deque()
         self._last_id = 0
         self._last_ping = clock.monotonic()
         self._ping: _PendingPing | None = None
@@ -103,7 +105,7 @@ class StreamLink:
         the interval does not wait for another frame before the session is renewed.
         """
         if self._buffer:
-            return Ok(self._buffer.popleft())
+            return self._pop()
         timeout = self._keepalive()
         if isinstance(timeout, Err):
             return timeout
@@ -115,10 +117,14 @@ class StreamLink:
                 routed = self._route(received.value, None)
                 if isinstance(routed, Err):
                     return routed
-        return Ok(self._buffer.popleft() if self._buffer else None)
+        return self._pop() if self._buffer else Ok(None)
 
-    def drain(self) -> list[Event]:
-        """Hand over the events buffered so far, so they outlive a link that failed."""
+    def _pop(self) -> Result[Event | None, CapitalComError]:
+        item = self._buffer.popleft()
+        return Err(item) if isinstance(item, ResponseFormatError) else Ok(item)
+
+    def drain(self) -> list[Event | ResponseFormatError]:
+        """Hand over what was buffered so far, so it outlives a link that failed."""
         events = list(self._buffer)
         self._buffer.clear()
         return events
@@ -211,7 +217,8 @@ class StreamLink:
         try:
             frame = decode_frame(text)
         except ResponseFormatError as error:
-            return Err(error)
+            self._buffer.append(error)
+            return Ok(None)
         if isinstance(frame, Event):
             self._buffer.append(frame)
         elif isinstance(frame, Ack):
