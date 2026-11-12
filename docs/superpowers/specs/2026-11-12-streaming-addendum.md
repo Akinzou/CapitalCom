@@ -176,16 +176,17 @@ Costs, to be documented:
 
 - `StreamError(TransportError)`: the stream gave up reconnecting; `__cause__` holds the last
   failure.
-- `SubscriptionError(ApiError)`: the frame's status is `ERROR` (its `errorCode` becomes
-  `error_code`), or a key is refused (`"ERROR: …"`) or missing from the ack. It carries a
+- `SubscriptionError(CapitalComError)`, not an `ApiError`, because a WebSocket answer has no
+  HTTP status: the frame's status is `ERROR` (its `errorCode` becomes `error_code`), or a key
+  is refused (`"ERROR: …"`) or missing from the ack. It carries a
   mapping from each refused key to the server's text, or to `"MISSING"`.
 - `ValidationError`: the 40 limit, an empty or duplicate epic list, a second open stream, or
   a call on a closed `Stream`.
 - `ResponseFormatError`: a frame that is not a JSON object, or a known event missing a field.
   A frame with an unknown `destination` is logged at DEBUG, by destination name only, and
   skipped, because Capital.com may add event types.
-- `capitalcom[streaming]` not installed: `connect()` raises `CapitalComError` naming the
-  extra, as RSA login does for `[encryption]`.
+- `capitalcom[streaming]` not installed: `connect()` raises `ImportError` naming the extra,
+  as `encrypted_password=True` does for `[encryption]`.
 
 ### 5.5 Architecture
 
