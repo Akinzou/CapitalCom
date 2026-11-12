@@ -1,4 +1,4 @@
-"""Ports: the only two process boundaries the core needs, the network and the clock."""
+"""Ports: the process boundaries the core needs: HTTP, the WebSocket stream and the clock."""
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -73,4 +73,28 @@ class Clock(Protocol):
 
     def sleep(self, seconds: float) -> None:
         """Block the calling thread."""
+        ...
+
+
+class StreamConnection(Protocol):
+    """One open WebSocket; never raises for network failures."""
+
+    def send(self, text: str) -> Result[None, TransportError]:
+        """Send one text frame."""
+        ...
+
+    def receive(self, timeout_s: float) -> Result[str | None, TransportError]:
+        """Wait up to ``timeout_s`` for one text frame; ``None`` when the time ran out."""
+        ...
+
+    def close(self) -> None:
+        """Close the socket; never raises."""
+        ...
+
+
+class StreamTransport(Protocol):
+    """Opens WebSocket connections."""
+
+    def connect(self, url: str) -> Result[StreamConnection, TransportError]:
+        """Open ``url``, or return ``TransportError`` when the handshake failed."""
         ...
