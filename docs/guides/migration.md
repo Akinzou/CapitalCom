@@ -1,7 +1,8 @@
 # Migrating from `CapitalClient` (1.x) to `CapitalCom` (2.x)
 
 `CapitalClient` still works in 2.x, with the same signatures and return values. It is
-deprecated and will be removed in 3.0. Each of its names emits one `DeprecationWarning`.
+deprecated and will be removed no earlier than 3.0; to stay on 1.x for now, pin
+`capitalcom<2`. Each of its names emits one `DeprecationWarning`.
 Python hides these by default; run with `-W default::DeprecationWarning` to see them.
 
 ## The client

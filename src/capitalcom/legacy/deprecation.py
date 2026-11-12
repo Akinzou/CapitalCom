@@ -21,7 +21,7 @@ def warn_once(name: str, extra: str = "") -> None:
         if name in _warned:
             return
         _warned.add(name)
-    message = f"{name} is deprecated and will be removed in 3.0; see {MIGRATION_URL}"
+    message = f"{name} is deprecated and will be removed no earlier than 3.0; see {MIGRATION_URL}"
     if extra:
         message = f"{message}. {extra}"
     warnings.warn(message, DeprecationWarning, stacklevel=_first_frame_outside_package())

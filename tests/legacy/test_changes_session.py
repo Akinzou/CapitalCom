@@ -66,7 +66,12 @@ def test_login_failure_is_authentication_error(
 
 def test_constructor_and_methods_warn_once(api: responses.RequestsMock) -> None:
     with pytest.warns(
-        DeprecationWarning, match=r"^CapitalClient is deprecated.*/CapitalCom/guides/migration/$"
+        DeprecationWarning,
+        # The project promises removal no earlier than 3.0, not in 3.0 itself.
+        match=(
+            r"^CapitalClient is deprecated and will be removed no earlier than 3\.0; "
+            r"see .*/CapitalCom/guides/migration/$"
+        ),
     ):
         client = legacy()
     with pytest.warns(DeprecationWarning, match=r"^CapitalClient\.lot_to_size is deprecated"):
