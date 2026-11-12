@@ -102,3 +102,6 @@ All notable changes to this project are documented in this file. The format foll
 
 - **Request bursts.** More than 10 requests in one second now wait for the window to free up
   instead of drawing a `429`. The limits are counted as sliding windows at send time (ADR 0006).
+- **Clearer format errors.** An account preference without the leverage in force says the field
+  is missing instead of "expected an integer, got NoneType", and a malformed
+  `currentAccountId` in a login answer names the field and what is wrong with it.

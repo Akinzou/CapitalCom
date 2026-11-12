@@ -7,6 +7,7 @@ from capitalcom.application.ports import HttpRequest, HttpResponse
 from capitalcom.application.result import Err, Ok, Result
 from capitalcom.application.retry import SESSION_PATH
 from capitalcom.domain.errors import ApiError, CapitalComError, ResponseFormatError
+from capitalcom.domain.parsing import format_error, optional_str
 
 ENCRYPTION_KEY_PATH = "/api/v1/session/encryptionKey"
 
@@ -48,9 +49,12 @@ def parse_login(response: HttpResponse) -> Result[LoginGrant, CapitalComError]:
         return Err(error)
     if not isinstance(body, Mapping):
         return Err(_format(response, "login response is not a JSON object"))
-    account_id = body.get("currentAccountId")
-    if account_id is not None and (not isinstance(account_id, str) or not account_id):
-        return Err(_format(response, f"login response has invalid currentAccountId {account_id!r}"))
+    try:
+        account_id = optional_str(body, "currentAccountId")
+    except ResponseFormatError as error:
+        return Err(error)
+    if account_id == "":
+        return Err(format_error("currentAccountId", "empty"))
     return Ok(LoginGrant(cst, security_token, account_id))
 
 

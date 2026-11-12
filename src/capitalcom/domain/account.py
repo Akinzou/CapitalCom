@@ -7,6 +7,7 @@ from typing import Any
 
 from capitalcom.domain.parsing import (
     as_mapping,
+    format_error,
     optional_str,
     require_bool,
     require_decimal,
@@ -110,8 +111,13 @@ class Leverage:
         """Build the leverage of instrument class ``name``."""
         where = f"leverages.{name}"
         available = require_list(payload, "available")
+        current = payload.get("current")
+        if current is None:
+            # Named as missing rather than "expected an integer, got NoneType": the field is
+            # absent, and that is what a reader of the error has to look for.
+            raise format_error(f"{where}.current", "missing")
         return cls(
-            current=to_int(payload.get("current"), f"{where}.current"),
+            current=to_int(current, f"{where}.current"),
             available=tuple(to_int(v, f"{where}.available") for v in available),
         )
 
