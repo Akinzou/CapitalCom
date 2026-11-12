@@ -33,9 +33,9 @@ def contents_links() -> list[str]:
     return re.findall(r"\]\(#([^)]+)\)", section.group(1))
 
 
-def test_every_contents_link_reaches_a_heading() -> None:
+def test_every_in_page_link_reaches_a_heading() -> None:
     anchors = {github_anchor(h) for h in headings("##") + headings("###")}
-    assert set(contents_links()) <= anchors
+    assert set(re.findall(r"\]\(#([^)]+)\)", outside_code(README))) <= anchors
 
 
 def test_every_section_is_in_the_contents() -> None:
@@ -48,7 +48,8 @@ def test_coverage_badge_reads_the_file_the_site_publishes() -> None:
     # would show "resource not found" on the project page instead of the coverage.
     assert SITE_URL is not None
     badge = re.search(
-        r"\[!\[Coverage\]\((https://img\.shields\.io/badge/dynamic/json\?[^)\s]+)\)\]\(([^)]+)\)",
+        r"\[!\[Code Coverage\]\((https://img\.shields\.io/badge/dynamic/json\?[^)\s]+)\)\]"
+        r"\(([^)]+)\)",
         README,
     )
     assert badge is not None, "README has no linked dynamic coverage badge"
@@ -57,4 +58,35 @@ def test_coverage_badge_reads_the_file_the_site_publishes() -> None:
     query = parse_qs(urlparse(badge.group(1)).query)
     assert query["url"] == [SITE_URL.group(1) + BADGE_FILE]
     assert query["query"] == ["$.percent_covered_display"]
+    assert query["label"] == ["Code Coverage"]
     assert f"site/{BADGE_FILE}" in PAGES_WORKFLOW
+
+
+def test_the_title_carries_the_coverage_badge_alone() -> None:
+    # The other badges sit on the lines below the title.
+    title = README.splitlines()[0]
+    assert title.startswith("# CapitalCom [![Code Coverage](")
+    assert title.count("[![") == 1
+
+
+def test_docs_badge_shows_the_site_build_from_master_and_links_the_site() -> None:
+    # The site is published on every push to master, so the badge follows that branch.
+    assert SITE_URL is not None
+    badge = re.search(
+        r"\[!\[Docs\]\((https://img\.shields\.io/github/actions/workflow/status/[^)\s]+)\)\]"
+        r"\(([^)]+)\)",
+        README,
+    )
+    assert badge is not None, "README has no linked docs badge"
+    url = urlparse(badge.group(1))
+    assert url.path.endswith("/Akinzou/CapitalCom/pages.yml")
+    assert parse_qs(url.query)["branch"] == ["master"]
+    assert badge.group(2) == SITE_URL.group(1)
+
+
+def test_licence_badge_leads_to_the_section_with_the_additional_permission() -> None:
+    # LICENSE alone reads "noncommercial"; the section also names the permission for
+    # individuals trading their own accounts. Absolute, so it works on PyPI too.
+    badge = re.search(r"\[!\[License\]\([^)]+\)\]\(([^)]+)\)", README)
+    assert badge is not None
+    assert badge.group(1) == "https://github.com/Akinzou/CapitalCom#license"

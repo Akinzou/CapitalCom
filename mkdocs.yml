@@ -13,6 +13,21 @@ exclude_docs: |
 
 theme:
   name: material
+  # Dark first, because the first entry is what a reader sees until they pick the other one;
+  # the toggle in the header switches, and the choice is remembered.
+  palette:
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
   features:
     - content.code.copy
     - navigation.sections

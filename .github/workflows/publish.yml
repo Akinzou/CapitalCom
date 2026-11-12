@@ -54,13 +54,5 @@ jobs:
           path: dist/
       - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
 
-  # The site follows PyPI: it is deployed only once the upload of this tag succeeded, so it
-  # never documents a version pip cannot install (ADR 0013).
-  pages:
-    needs: publish
-    # A called workflow can use no more than its caller grants.
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: ./.github/workflows/pages.yml
+  # No site deploy here: the site follows master and is published on each push to it
+  # (ADR 0013), while this tag may point behind master and would roll the site back.
