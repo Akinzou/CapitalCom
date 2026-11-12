@@ -44,7 +44,14 @@ plugins:
 
 nav:
   - Home: index.md
-  - Migration from 1.x: guides/migration.md
+  - Getting started: getting-started.md
+  - Guides:
+      - Sessions and accounts: guides/sessions.md
+      - Markets and prices: guides/markets.md
+      - Trading: guides/trading.md
+      - Streaming: guides/streaming.md
+      - Errors and reliability: guides/reliability.md
+      - Migration from 1.x: guides/migration.md
   - API reference:
       - Client and namespaces:
           - The client: reference/client.md
