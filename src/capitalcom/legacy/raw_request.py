@@ -54,9 +54,13 @@ def send_raw(
             allow_redirects=False,
             **options,
         )
-        if response.status_code == 401 and attempt == 0:
+        if response.status_code == 401:
+            # Refused tokens are dropped even on the last attempt, so the next call logs in
+            # instead of sending them again, and they never count as having been used.
             core.session.invalidate(tokens)
-            continue
+            if attempt == 0:
+                continue
+            return response
         if response.status_code == 429:
             _log.warning(
                 "rate limited (429) on %s %s; waiting %.1fs", method, path, RATE_LIMIT_WAIT_S

@@ -40,7 +40,8 @@ Instead it:
 - refuses a path that does not start with a single `/`: `"@evil.example/x"` appended to the
   host would make another host receive the tokens;
 - uses a `(5, 15)` s timeout unless the caller gives one (1.0.4 had none);
-- keeps 1.0.4's loop: one re-login on the first 401, a 1 s wait on a 429, ten attempts.
+- keeps 1.0.4's loop: one re-login on the first 401, a 1 s wait on a 429, ten attempts;
+- drops the tokens refused by a second 401, so the next call logs in instead of reusing them.
 
 ### Opens send the 1.0.4 body
 

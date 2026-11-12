@@ -5,6 +5,11 @@ per process; the migration guide maps each call to its 2.x equivalent.
 """
 
 import logging
+
+# Not used here and not in __all__: 1.0.4 imported both, and test suites written for it
+# patch "capitalcom.client.time.sleep" to skip the waits, which fails without the name.
+import random as random
+import time as time
 from collections.abc import Mapping
 from typing import Any
 
@@ -148,6 +153,9 @@ class CapitalClient(LegacyAttributes):
     def close_position_by_ref(self, deal_reference: str, size: float | None = None) -> str:
         """Resolve the dealId of ``deal_reference``, then close that whole position."""
         warn_once("CapitalClient.close_position_by_ref")
+        # Checked here as well as in _close: a refused size must not cost a confirmation
+        # lookup first, and the size still reaches close_position_by_id as in 1.0.4, so an
+        # override sees what the caller passed.
         _refuse_partial(size)
         return self.close_position_by_id(self.get_deal_by_ref(deal_reference), size=size)
 

@@ -1,7 +1,5 @@
 """The 1.0.4 attributes of ``CapitalClient``, backed by the 2.x core instead of copies."""
 
-import time
-
 import requests
 
 from capitalcom.api.composition import Core
@@ -82,14 +80,19 @@ class LegacyAttributes:
     def token_expiry(self) -> float:
         """Epoch seconds when the idle session expires; ``0`` without a session."""
         remaining = self._core.session.idle_remaining_s()
-        return 0.0 if remaining is None else time.time() + remaining
+        return 0.0 if remaining is None else self._now() + remaining
 
     @token_expiry.setter
     def token_expiry(self, value: float) -> None:
         # A past time means "log in again", as it did in 1.0.4. A future time cannot keep a
         # session alive on the server; the core renews it on its own timer instead.
-        if value <= time.time():
+        if value <= self._now():
             self._set_tokens(None, None)
+
+    def _now(self) -> float:
+        # The core's clock, not time.time(): the expiry is computed from the session's own
+        # timer, and a test or caller that replaces the clock must see both move together.
+        return self._core.clock.now_utc().timestamp()
 
     def _headers(self) -> dict[str, str | None]:
         return {"CST": self.cst, "X-SECURITY-TOKEN": self.security_token}

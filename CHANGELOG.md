@@ -66,8 +66,9 @@ All notable changes to this project are documented in this file. The format foll
    `TransportError`s that are also `requests.exceptions.ConnectionError`, so existing
    `except requests.exceptions.ConnectionError` and `except RequestException` clauses still
    catch them; a trade whose outcome is unknown is not one of them (change 5).
-4. **Rejected opens raise.** A rejected open raises `DealRejectedError`. 1.0.4 returned a
-   dealId as if the trade had succeeded.
+4. **Rejected opens raise.** A rejected open raises `DealRejectedError`, with the server's
+   reason. A rejected confirmation names no affected deal, so 1.0.4 asked for it ten more
+   times and then raised a bare `Exception` saying the deal reference was not resolved.
 5. **Timeouts.**
    - Every request has a timeout.
    - A trade request that times out raises `OutcomeUnknownError` and is never resent.
@@ -81,9 +82,13 @@ All notable changes to this project are documented in this file. The format foll
 8. **`_request`.** It always verifies TLS and never follows redirects: `verify=False` or
    `allow_redirects=True` raises `ValidationError`, while `verify=<CA bundle path>` and a
    path set on `client.session.verify` still work. A path that does not start with a single
-   `/` raises too, so the session tokens cannot be sent to another host.
+   `/` raises too, so the session tokens cannot be sent to another host. When the retry
+   after a re-login is refused with `401` as well, the `401` response is still returned,
+   and the refused tokens are dropped so that the next call logs in again.
 9. **Narrower exports.** `from capitalcom import *` no longer re-exports the `requests`,
-   `time`, `logging` and `random` modules.
+   `time`, `logging` and `random` modules. `capitalcom.client.time` and
+   `capitalcom.client.random` still exist, so `mock.patch("capitalcom.client.time.sleep")`
+   keeps working.
 10. **Top-up result.** `top_up_demo` raises `ApiError` when the server answers
     `"successful": false`.
 11. **Opens that open nothing.** An open that nets against an existing position raises
