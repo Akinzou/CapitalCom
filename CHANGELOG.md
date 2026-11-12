@@ -12,8 +12,8 @@ All notable changes to this project are documented in this file. The format foll
   badges below it, and diagrams of the layers, of a trade from request to confirmation, and of
   the error types. The PyPI and licence badges link to the project page and the licence, and
   a docs badge links the documentation site.
-- The documentation site opens in a dark theme, with a switch to the light one, and is
-  rebuilt on every change to `master`, so it and the coverage badge are always current.
+- The documentation site opens in a dark theme, with a switch to the light one. It is
+  rebuilt, with the coverage badge, on every change to `master` instead of on each release.
 
 ## [2.0.1] — 2026-11-12
 

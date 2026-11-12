@@ -82,3 +82,11 @@ def test_docs_badge_shows_the_site_build_from_master_and_links_the_site() -> Non
     assert url.path.endswith("/Akinzou/CapitalCom/pages.yml")
     assert parse_qs(url.query)["branch"] == ["master"]
     assert badge.group(2) == SITE_URL.group(1)
+
+
+def test_licence_badge_leads_to_the_section_with_the_additional_permission() -> None:
+    # LICENSE alone reads "noncommercial"; the section also names the permission for
+    # individuals trading their own accounts. Absolute, so it works on PyPI too.
+    badge = re.search(r"\[!\[License\]\([^)]+\)\]\(([^)]+)\)", README)
+    assert badge is not None
+    assert badge.group(1) == "https://github.com/Akinzou/CapitalCom#license"

@@ -4,7 +4,7 @@
 
 [![Discord](https://img.shields.io/badge/Join_us_on-Discord-5865F2?logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/BARYa55KS8)
 
-[![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-lightgrey.svg)](https://github.com/Akinzou/CapitalCom/blob/master/LICENSE)
+[![License](https://img.shields.io/badge/license-PolyForm_Noncommercial_1.0.0-lightgrey.svg)](https://github.com/Akinzou/CapitalCom#license)
 
 A Python client for the [Capital.com](https://capital.com) REST and WebSocket API, for demo
 and live accounts. It logs in and keeps the session alive, places trades and waits for their
