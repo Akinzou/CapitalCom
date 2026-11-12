@@ -3,7 +3,6 @@ network errors, paths off the host, restored token pairs, refused tokens and the
 
 import os
 import random
-import time
 import warnings
 from datetime import UTC, datetime
 from unittest import mock
@@ -17,6 +16,7 @@ from capitalcom.client import CapitalClient
 from capitalcom.domain.errors import ValidationError
 from capitalcom.infrastructure.system_clock import SystemClock
 from capitalcom.legacy import deprecation
+from capitalcom.legacy.raw_request import RATE_LIMIT_WAIT_S
 from tests.legacy.conftest import API_KEY, DEMO, IDENTIFIER, PASSWORD, legacy, logins, sent
 from tests.legacy.golden.payloads import account
 
@@ -75,21 +75,41 @@ def test_restored_tokens_survive_a_dropped_session(api: responses.RequestsMock) 
     assert logins(api) == 1
 
 
-def test_module_still_exposes_time_and_random() -> None:
+def test_patching_the_modules_time_skips_the_library_waits(
+    api: responses.RequestsMock,
+) -> None:
     # 1.0.4 test suites patch "capitalcom.client.time.sleep" to skip the waits.
+    api.get(ACCOUNTS, status=429)
+    api.get(ACCOUNTS, json={"accounts": []})
+    client = legacy()
     with mock.patch("capitalcom.client.time.sleep") as sleep:
-        time.sleep(5)
-    sleep.assert_called_once_with(5)
+        assert client._request("GET", "/api/v1/accounts").status_code == 200
+    sleep.assert_called_once_with(RATE_LIMIT_WAIT_S)
     assert capitalcom.client.random is random
     assert {"time", "random"}.isdisjoint(capitalcom.client.__all__)
 
 
-def test_a_second_401_drops_the_refused_tokens(api: responses.RequestsMock) -> None:
+def test_a_401_after_a_429_still_gets_its_relogin(api: responses.RequestsMock) -> None:
+    api.get(ACCOUNTS, status=429)
+    api.get(ACCOUNTS, status=401)
+    api.get(ACCOUNTS, json={"accounts": []})
+    assert legacy()._request("GET", "/api/v1/accounts").status_code == 200
+    assert logins(api) == 2
+
+
+def test_a_second_401_is_returned_without_counting_as_use(
+    api: responses.RequestsMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
     api.get(ACCOUNTS, status=401)
     client = legacy()
+    used: list[None] = []
+    monkeypatch.setattr(client._core.session, "mark_used", lambda: used.append(None))
     assert client._request("GET", "/api/v1/accounts").status_code == 401
-    assert client.cst is None
-    assert logins(api) == 2
+    assert used == []
+    # The fresh tokens are kept, as in the 2.x client: an endpoint that always answers 401
+    # costs one login per call, not two.
+    client._request("GET", "/api/v1/accounts")
+    assert logins(api) == 3
 
 
 def test_token_expiry_reads_the_core_clock(
@@ -105,3 +125,11 @@ def test_token_expiry_reads_the_core_clock(
     client.token_expiry = fixed.timestamp() + 60
     client._request("GET", "/api/v1/accounts")
     assert logins(api) == 1
+
+
+def test_token_expiry_follows_a_patched_time(api: responses.RequestsMock) -> None:
+    api.get(ACCOUNTS, json={"accounts": []})
+    client = legacy()
+    client._request("GET", "/api/v1/accounts")
+    with mock.patch("capitalcom.client.time.time", return_value=4_000_000_000.0):
+        assert abs(client.token_expiry - 4_000_000_600.0) < 5

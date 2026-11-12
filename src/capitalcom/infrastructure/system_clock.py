@@ -13,7 +13,9 @@ class SystemClock:
 
     def now_utc(self) -> datetime:
         """Current time as an aware UTC datetime."""
-        return datetime.now(UTC)
+        # From time.time() rather than datetime.now(): code written for 1.x patches
+        # "capitalcom.client.time.time", and the legacy token_expiry must follow that patch.
+        return datetime.fromtimestamp(time.time(), UTC)
 
     def sleep(self, seconds: float) -> None:
         """Block the calling thread."""

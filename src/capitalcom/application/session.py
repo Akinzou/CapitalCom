@@ -122,12 +122,13 @@ class SessionManager:
 
         The account of adopted tokens is unknown, so ``current_account_id`` becomes ``None``
         and the account chosen earlier is forgotten: re-applying it on the next renewal
-        would move a session its owner never pointed at that account.
+        would move a session its owner never pointed at that account. Dropping the session
+        keeps the choice, so the next login returns to it.
         """
         with self._lock:
             self._drop()
-            self._selected_account = None
             if cst and security_token:
+                self._selected_account = None
                 self._adopt(cst, security_token)
 
     def idle_remaining_s(self) -> float | None:

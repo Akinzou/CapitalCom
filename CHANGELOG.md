@@ -82,9 +82,9 @@ All notable changes to this project are documented in this file. The format foll
 8. **`_request`.** It always verifies TLS and never follows redirects: `verify=False` or
    `allow_redirects=True` raises `ValidationError`, while `verify=<CA bundle path>` and a
    path set on `client.session.verify` still work. A path that does not start with a single
-   `/` raises too, so the session tokens cannot be sent to another host. When the retry
-   after a re-login is refused with `401` as well, the `401` response is still returned,
-   and the refused tokens are dropped so that the next call logs in again.
+   `/` raises too, so the session tokens cannot be sent to another host. The first `401`
+   gets one re-login and one resend even when it follows a `429` (1.0.4 re-logged in only
+   on the very first attempt), and a second `401` is returned as before.
 9. **Narrower exports.** `from capitalcom import *` no longer re-exports the `requests`,
    `time`, `logging` and `random` modules. `capitalcom.client.time` and
    `capitalcom.client.random` still exist, so `mock.patch("capitalcom.client.time.sleep")`

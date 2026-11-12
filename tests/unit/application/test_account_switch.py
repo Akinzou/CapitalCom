@@ -221,3 +221,15 @@ def test_adopted_tokens_end_the_account_selection() -> None:
         ("POST", "/api/v1/session", None),
         ("GET", "/api/v1/accounts", None),
     ]
+
+
+def test_dropping_the_session_keeps_the_account_selection() -> None:
+    api, session, transport, _ = make([login_ok(1), switched(), login_ok(2), switched(), OK])
+    session.switch_account("B")
+    session.adopt_tokens(None, None)
+    assert isinstance(api.call("GET", "/api/v1/accounts"), Ok)
+    assert shape(transport.requests[2:]) == [
+        ("POST", "/api/v1/session", None),
+        ("PUT", "/api/v1/session", "B"),
+        ("GET", "/api/v1/accounts", None),
+    ]

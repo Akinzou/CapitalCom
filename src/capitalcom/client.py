@@ -154,8 +154,8 @@ class CapitalClient(LegacyAttributes):
         """Resolve the dealId of ``deal_reference``, then close that whole position."""
         warn_once("CapitalClient.close_position_by_ref")
         # Checked here as well as in _close: a refused size must not cost a confirmation
-        # lookup first, and the size still reaches close_position_by_id as in 1.0.4, so an
-        # override sees what the caller passed.
+        # lookup first. A size that passes (None or 0) still reaches close_position_by_id
+        # as given, so 1.0.4 overrides keep their call shape.
         _refuse_partial(size)
         return self.close_position_by_id(self.get_deal_by_ref(deal_reference), size=size)
 
