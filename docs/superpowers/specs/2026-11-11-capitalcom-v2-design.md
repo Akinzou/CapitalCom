@@ -250,7 +250,7 @@ A golden test suite pins every row of the table above against recorded HTTP fixt
    accounts and history; positions and working orders; markets, prices, and
    sentiment; watchlists.
 3. Legacy layer, golden compatibility suite, and CHANGELOG.
-4. Streaming:
+4. Streaming (design: `2026-11-12-streaming-addendum.md`):
    - It gets its own short design addendum before any code: reconnects, token refresh, the
      40-instrument limit, and the threading model.
    - It probably needs the `websocket-client` dependency as an extra.

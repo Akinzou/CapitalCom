@@ -5,7 +5,7 @@ from types import TracebackType
 import requests
 
 from capitalcom.api.accounts import AccountsResource
-from capitalcom.api.composition import Core, build_core
+from capitalcom.api.composition import Core, build_core, stream_transport
 from capitalcom.api.history import HistoryResource
 from capitalcom.api.markets import MarketsResource
 from capitalcom.api.orders import OrdersResource
@@ -13,6 +13,7 @@ from capitalcom.api.positions import PositionsResource
 from capitalcom.api.prices import PricesResource
 from capitalcom.api.sentiment import SentimentResource
 from capitalcom.api.session_resource import SessionResource
+from capitalcom.api.stream import StreamResource
 from capitalcom.api.watchlists import WatchlistsResource
 from capitalcom.application.logs import get_logger
 from capitalcom.application.result import Err
@@ -67,6 +68,7 @@ class CapitalCom:
         self.prices = PricesResource(self._core)
         self.sentiment = SentimentResource(self._core)
         self.watchlists = WatchlistsResource(self._core)
+        self.stream = StreamResource(self._core, lambda: stream_transport(http_session))
 
     def __repr__(self) -> str:
         # The identifier is the account's e-mail address, so only the environment is shown.
@@ -77,10 +79,15 @@ class CapitalCom:
         if self._closed:
             return
         self._closed = True
+        # The socket goes first: its frames carry the session tokens, and it must not outlive
+        # them. A failed socket close still lets the logout run.
         try:
-            result = self._core.session.close()
+            self.stream.close()
         finally:
-            self._core.release()
+            try:
+                result = self._core.session.close()
+            finally:
+                self._core.release()
         if isinstance(result, Err):
             result.unwrap()
 

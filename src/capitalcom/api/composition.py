@@ -9,11 +9,11 @@ from capitalcom.application.api_client import ApiClient
 from capitalcom.application.confirmer import DealConfirmer
 from capitalcom.application.dispatcher import Dispatcher
 from capitalcom.application.login import PasswordEncryptor
-from capitalcom.application.ports import Clock, HttpTransport
+from capitalcom.application.ports import Clock, HttpTransport, StreamTransport
 from capitalcom.application.rate_limiter import RateLimiter
 from capitalcom.application.retry import RetryPolicy
 from capitalcom.application.session import Credentials, SessionManager
-from capitalcom.domain.enums import Environment
+from capitalcom.domain.enums import STREAM_URL, Environment
 from capitalcom.infrastructure.requests_transport import RequestsTransport
 from capitalcom.infrastructure.system_clock import SystemClock
 
@@ -69,6 +69,33 @@ def _load_encryptor() -> PasswordEncryptor:
             "pip install 'capitalcom[encryption]'"
         ) from error
     return encrypt_password
+
+
+def stream_transport(http_session: requests.Session | None) -> StreamTransport:
+    """The WebSocket transport, trusting the CA bundle an injected session names."""
+    # Imported here, so REST-only users never need websockets; called by connect(), so a
+    # missing extra fails where streaming is asked for, not in the constructor.
+    try:
+        from capitalcom.infrastructure.websocket_transport import WebsocketTransport
+    except ImportError as error:
+        raise ImportError(
+            "streaming needs the 'streaming' extra: pip install 'capitalcom[streaming]'"
+        ) from error
+    return WebsocketTransport(_stream_verify(http_session))
+
+
+def _stream_verify(http_session: requests.Session | None) -> bool | str:
+    # requests' own merge, so the stream trusts what REST trusts: REQUESTS_CA_BUNDLE and
+    # CURL_CA_BUNDLE win over session.verify unless the session ignores the environment.
+    session = http_session if http_session is not None else requests.Session()
+    try:
+        settings = session.merge_environment_settings(STREAM_URL, {}, None, None, None)
+    finally:
+        if http_session is None:
+            session.close()
+    verify = settings["verify"]
+    # False never switches verification off; it falls back to the default bundle.
+    return verify if isinstance(verify, str) and verify else True
 
 
 def _nothing() -> None:
