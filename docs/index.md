@@ -8,18 +8,15 @@ numbers and typed errors.
 ## Install
 
 ```bash
-pip install --pre capitalcom
+pip install capitalcom
 ```
-
-`--pre` is needed while 2.0 is a release candidate; without it pip installs 1.0.4, which this
-site does not describe.
 
 Optional extras:
 
-- `pip install --pre "capitalcom[streaming]"` for live prices over the WebSocket;
-- `pip install --pre "capitalcom[encryption]"` to send the password encrypted at login.
+- `pip install "capitalcom[streaming]"` for live prices over the WebSocket;
+- `pip install "capitalcom[encryption]"` to send the password encrypted at login.
 
-Python 3.11 or newer.
+Python 3.11 or newer; on an older Python, pip installs 1.0.4, which this site does not describe.
 
 ## Quick start
 

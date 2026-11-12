@@ -127,4 +127,4 @@ Instead it:
   `login_session` no longer changes how they reach the server.
 - A bug in the 2.x core now reaches 1.x users too. The golden suite and the legacy contract
   test (`test_legacy_round_trip`) run in CI to catch it.
-- The layer is deleted in 3.0, with `capitalcom.legacy` and the golden suite.
+- The layer is deleted no earlier than 3.0, with `capitalcom.legacy` and the golden suite.

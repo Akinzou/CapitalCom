@@ -1,7 +1,8 @@
 # Streaming
 
 Capital.com pushes quotes and OHLC bars over a WebSocket. Streaming needs the `streaming`
-extra, installed with `pip install --pre "capitalcom[streaming]"`. Without it, `cc.stream.connect()` raises `ImportError` naming the extra. REST-only code never
+extra, installed with `pip install "capitalcom[streaming]"`. Without it,
+`cc.stream.connect()` raises `ImportError` naming the extra. REST-only code never
 imports the WebSocket library.
 
 ## A first stream

@@ -11,12 +11,11 @@ objects, numbers are `Decimal`, and failures are typed exceptions.
 ## Install
 
 ```bash
-pip install --pre capitalcom
+pip install capitalcom
 ```
 
-`--pre` is needed while 2.0 is a release candidate; without it pip installs 1.0.4. Optional
-extras: `capitalcom[streaming]` for live prices over the WebSocket, and
-`capitalcom[encryption]` to send the password encrypted. Python 3.11 or newer.
+Optional extras: `capitalcom[streaming]` for live prices over the WebSocket, and
+`capitalcom[encryption]` to send the password encrypted. Python 3.11 or newer; on an older Python, pip installs 1.0.4.
 
 ## Quick start
 
@@ -66,7 +65,8 @@ and try every change on demo.
 
 ## Coming from 1.x
 
-`CapitalClient` keeps working in 2.x, with a `DeprecationWarning`, and will be removed in 3.0.
+`CapitalClient` keeps working in 2.x, with a `DeprecationWarning`, and will be removed no earlier than 3.0.
+To stay on 1.x for now, pin `capitalcom<2` in your requirements.
 The [migration guide](https://akinzou.github.io/CapitalCom/guides/migration/) maps each 1.x call to its 2.x equivalent.
 
 ## License

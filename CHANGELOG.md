@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file. The format foll
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased] — 2.0.0
+## [2.0.0] — 2026-11-12
 
 ### Added
 
@@ -12,7 +12,7 @@ All notable changes to this project are documented in this file. The format foll
   renews the session before Capital.com's 10-minute idle timeout, and logs out on `close()` or
   at the end of a `with` block. Namespaces: `session`, `accounts`, `history`, `positions`,
   `orders`, `markets`, `prices`, `sentiment` and `watchlists`.
-- **Live prices over the WebSocket** (`cc.stream`, needs `pip install 'capitalcom[streaming]'`).
+- **Live prices over the WebSocket** (`cc.stream`, needs `pip install "capitalcom[streaming]"`).
   `with cc.stream.connect() as stream:` opens the stream; `subscribe_quotes` and
   `subscribe_ohlc` add up to 40 epics each, and iterating yields `Quote`, `Candle` and `Gap`
   events in the calling thread. The stream keeps the session alive, reconnects with backoff,
@@ -104,6 +104,9 @@ All notable changes to this project are documented in this file. The format foll
 
 ### Fixed
 
+Found while preparing this release, before any 2.x version shipped; each entry is listed because
+it settles a behaviour you can rely on.
+
 - **Request bursts.** More than 10 requests in one second now wait for the window to free up
   instead of drawing a `429`. The limits are counted as sliding windows at send time (ADR 0006).
 - **Clearer format errors.** An account preference without the leverage in force says the field
@@ -136,3 +139,5 @@ All notable changes to this project are documented in this file. The format foll
   the deal, order, confirmation or watchlist id.
 - **Deprecation link.** The `CapitalClient` deprecation warning points to the migration guide
   on the documentation site.
+
+[2.0.0]: https://github.com/Akinzou/CapitalCom/releases/tag/v2.0.0

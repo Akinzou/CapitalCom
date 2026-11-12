@@ -14,7 +14,7 @@ raises `ValueError` otherwise. Wrong credentials therefore surface at the first 
 in the constructor.
 
 With `encrypted_password=True` the password is sent encrypted with a key the server issues
-for each login. It needs the `encryption` extra (`pip install --pre "capitalcom[encryption]"`);
+for each login. It needs the `encryption` extra (`pip install "capitalcom[encryption]"`);
 without it the constructor raises `ImportError`
 ([ADR 0008](../adr/0008-session-context-and-read-models.md)).
 

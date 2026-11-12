@@ -6,16 +6,16 @@ account, then shows what changes for a live account.
 ## Install
 
 ```bash
-pip install --pre capitalcom
+pip install capitalcom
 ```
 
-`--pre` is needed while 2.0 is a release candidate. Python 3.11 or newer is required.
+Python 3.11 or newer is required; on an older Python, pip installs 1.0.4.
 Two extras add optional features:
 
 - `capitalcom[streaming]` for live quotes and bars over the WebSocket, installed with
-  `pip install --pre "capitalcom[streaming]"`;
+  `pip install "capitalcom[streaming]"`;
 - `capitalcom[encryption]` to send the password encrypted at login, installed with
-  `pip install --pre "capitalcom[encryption]"`.
+  `pip install "capitalcom[encryption]"`.
 
 ## Credentials
 
