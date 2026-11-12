@@ -97,6 +97,10 @@ def btc(demo_core: Core) -> Iterator[Market]:
     details = demo_core.api.call("GET", f"/api/v1/markets/{EPIC}").unwrap()
     status = details["snapshot"]["marketStatus"]
     if status != "TRADEABLE":
+        # A release smoke that skipped would pass having traded nothing, so there a closed
+        # market fails with the reason; the nightly contract run reports it as a skip.
+        if os.environ.get("CAPITAL_SMOKE"):
+            pytest.fail(f"{EPIC} {status}: the release smoke needs an open market, rerun later")
         pytest.skip(f"{EPIC} {status}")
     rules = details["dealingRules"]
     log.info("BTCUSD dealing rules: %s", rules)
