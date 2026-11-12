@@ -37,6 +37,14 @@ ACK_TIMEOUT_S = 10.0
 _log = get_logger("capitalcom.stream")
 
 
+class AckTimeoutError(TransportError):
+    """No acknowledgement arrived in time: the link is presumed dead, not closed by the server.
+
+    Its own type, because ``reached_server`` alone cannot tell it from a close frame: both
+    reached the server, but only a close frame means the server ended the stream.
+    """
+
+
 @dataclass(frozen=True, slots=True)
 class _PendingPing:
     correlation_id: str
@@ -70,7 +78,6 @@ class StreamLink:
             if isinstance(ack, Err):
                 return ack
             if not is_invalid_session(ack.value):
-                self._session.mark_used()
                 checked = check_ack(ack.value, expected_keys)
                 return Err(checked.error) if isinstance(checked, Err) else ack
             # The server refused the tokens the frame carried (P7: after a logout or expiry);
@@ -91,36 +98,49 @@ class StreamLink:
         timeout = self._keepalive()
         if isinstance(timeout, Err):
             return timeout
-        received = self._connection.receive(timeout.value)
-        if isinstance(received, Err):
-            return Err(received.error)
-        if received.value is None:
-            return Ok(None)
-        incoming = self._decode(received.value)
-        if isinstance(incoming, Err):
-            return incoming
-        frame = incoming.value
-        if isinstance(frame, Ack):
-            handled = self._ping_answered(frame)
-            return handled if isinstance(handled, Err) else Ok(None)
-        return Ok(frame)
+        if not self._buffer:
+            received = self._connection.receive(timeout.value)
+            if isinstance(received, Err):
+                return Err(received.error)
+            if received.value is not None:
+                routed = self._route(received.value, None)
+                if isinstance(routed, Err):
+                    return routed
+        return Ok(self._buffer.popleft() if self._buffer else None)
+
+    def drain(self) -> list[Event]:
+        """Hand over the events buffered so far, so they outlive a link that failed."""
+        events = list(self._buffer)
+        self._buffer.clear()
+        return events
 
     def close(self) -> None:
         """Close the connection."""
         self._connection.close()
 
     def _keepalive(self) -> Result[float, CapitalComError]:
+        # An overdue ack may be sitting behind frames a slow caller has not read yet, so the
+        # queue is drained before the link is declared dead.
+        while (ping := self._ping) is not None and self._overdue(ping):
+            received = self._connection.receive(0.0)
+            if isinstance(received, Err):
+                return Err(received.error)
+            if received.value is None:
+                return Err(AckTimeoutError("no keepalive acknowledgement"))
+            routed = self._route(received.value, None)
+            if isinstance(routed, Err):
+                return routed
         now = self._clock.monotonic()
         if self._ping is not None:
-            left = self._ping.sent_at + ACK_TIMEOUT_S - now
-            if left <= 0:
-                return Err(TransportError("no keepalive acknowledgement", reached_server=True))
-            return Ok(left)
+            return Ok(self._ping.sent_at + ACK_TIMEOUT_S - now)
         due = self._last_ping + KEEPALIVE_S
         if now < due:
             return Ok(due - now)
         sent = self._send_ping(retried=False)
         return sent if isinstance(sent, Err) else Ok(ACK_TIMEOUT_S)
+
+    def _overdue(self, ping: _PendingPing) -> bool:
+        return self._clock.monotonic() >= ping.sent_at + ACK_TIMEOUT_S
 
     def _send_ping(self, *, retried: bool) -> Result[None, CapitalComError]:
         sent = self._send(PING, None)
@@ -166,26 +186,27 @@ class StreamLink:
                 return Err(received.error)
             if received.value is None:
                 continue
-            incoming = self._decode(received.value)
-            if isinstance(incoming, Err):
-                return incoming
-            frame = incoming.value
-            if isinstance(frame, Event):
-                self._buffer.append(frame)
-            elif isinstance(frame, Ack):
-                if frame.correlation_id == correlation_id:
-                    return Ok(frame)
-                handled = self._ping_answered(frame)
-                if isinstance(handled, Err):
-                    return handled
-        return Err(TransportError("no acknowledgement", reached_server=True))
+            routed = self._route(received.value, correlation_id)
+            if isinstance(routed, Err):
+                return routed
+            if routed.value is not None:
+                return Ok(routed.value)
+        return Err(AckTimeoutError("no acknowledgement"))
 
-    def _decode(self, text: str) -> Result[Event | Ack | None, CapitalComError]:
+    def _route(self, text: str, awaited: str | None) -> Result[Ack | None, CapitalComError]:
+        """Buffer an event, settle a ping ack, or return the ack ``awaited`` is waiting for."""
         try:
             frame = decode_frame(text)
         except ResponseFormatError as error:
             return Err(error)
-        if isinstance(frame, Event | Ack):
-            return Ok(frame)
-        _log.debug("skipped a stream frame of unknown kind %r", frame.destination)
+        if isinstance(frame, Event):
+            self._buffer.append(frame)
+        elif isinstance(frame, Ack):
+            if frame.correlation_id == awaited:
+                return Ok(frame)
+            handled = self._ping_answered(frame)
+            if isinstance(handled, Err):
+                return handled
+        else:
+            _log.debug("skipped a stream frame of unknown kind %r", frame.destination)
         return Ok(None)

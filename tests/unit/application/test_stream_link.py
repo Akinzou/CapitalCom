@@ -4,7 +4,12 @@ import pytest
 
 from capitalcom.application.result import Err, Ok
 from capitalcom.application.stream_frames import Ack, Event
-from capitalcom.application.stream_link import ACK_TIMEOUT_S, KEEPALIVE_S, StreamLink
+from capitalcom.application.stream_link import (
+    ACK_TIMEOUT_S,
+    KEEPALIVE_S,
+    AckTimeoutError,
+    StreamLink,
+)
 from capitalcom.domain.errors import (
     AuthenticationError,
     ResponseFormatError,
@@ -178,3 +183,35 @@ def test_transport_error_is_returned() -> None:
     assert not result.error.reached_server
     link.close()
     assert connection.closed
+
+
+def test_timeouts_are_ack_timeouts_not_server_closes() -> None:
+    link, _, clock = open_link()
+    request = link.request(SUBSCRIBE, {"epics": ["GOLD"]}, ["GOLD"])
+    assert isinstance(request, Err)
+    assert isinstance(request.error, AckTimeoutError)
+    clock.advance(KEEPALIVE_S)
+    link.next_incoming()
+    keepalive = link.next_incoming()
+    assert isinstance(keepalive, Err)
+    assert isinstance(keepalive.error, AckTimeoutError)
+
+
+def test_slow_consumer_does_not_miss_a_queued_keepalive_ack() -> None:
+    link, _, clock = open_link([quote_frame("A"), ack_frame("1"), quote_frame("B")])
+    clock.advance(KEEPALIVE_S)
+    first = link.next_incoming()
+    assert isinstance(first, Ok)
+    assert isinstance(first.value, Event)
+    clock.advance(15)
+    second = link.next_incoming()
+    assert isinstance(second, Ok)
+    assert isinstance(second.value, Event)
+    assert second.value.value.epic == "B"
+
+
+def test_drain_hands_over_events_buffered_by_a_failed_request() -> None:
+    link, _, _ = open_link([quote_frame("A")])
+    assert isinstance(link.request(SUBSCRIBE, {"epics": ["GOLD"]}, ["GOLD"]), Err)
+    assert [e.value.epic for e in link.drain()] == ["A"]
+    assert link.drain() == []
